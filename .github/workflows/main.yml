@@ -14,7 +14,6 @@ jobs:
     strategy:
       matrix:
         ruby:
-          - '3.2'
           - '3.3'
           - '3.4'
           - '4.0'
@@ -33,7 +32,7 @@ jobs:
       - name: Validate RBS
         run: bundle exec rbs -I sig validate
       - name: Build the gem
-        run: gem build ruby_llm-ai_sdk.gemspec
+        run: gem build ruby-ai-stream.gemspec
 
   rails-demo:
     runs-on: ubuntu-latest

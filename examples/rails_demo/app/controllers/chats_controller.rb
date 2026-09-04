@@ -5,22 +5,14 @@ class ChatsController < ApplicationController
   before_action :allow_local_client
 
   def create
-    stream = nil
-    sequence = 0
-    stream = RubyLLM::Stream::AISDK.new(
-      response.stream,
-      message_id: assistant_message_id,
-      id_generator: -> { "demo-part-#{sequence += 1}" }
-    )
-    stream.headers.each { |name, value| response.headers[name] = value }
+    ui_stream = AIStream::UIMessage::V1::Stream.new(response.stream)
+    ui_stream.headers.each { |name, value| response.headers[name] = value }
 
-    DemoConversation.new(stream).run(scenario: params.fetch(:scenario, "complete"))
+    DemoConversation.new(ui_stream).run(scenario: params.fetch(:scenario, "complete"))
   rescue ActionController::Live::ClientDisconnected, IOError
-    # A cancelled useChat request closes the socket. That is an expected outcome.
-    Rails.logger.info("AI SDK client disconnected")
+    Rails.logger.info("UI message client disconnected")
   rescue StandardError => error
     Rails.logger.error(error.full_message)
-    terminate_failed_stream(stream)
   ensure
     response.stream.close
   end
@@ -30,17 +22,6 @@ class ChatsController < ApplicationController
   end
 
   private
-
-  def assistant_message_id
-    user_message_id = params[:messages]&.last&.[](:id)
-    ["rails-demo-assistant", user_message_id].compact.join("-")
-  end
-
-  def terminate_failed_stream(stream)
-    stream&.error(error_text: "Agent stream failed") unless stream&.finished?
-  rescue ActionController::Live::ClientDisconnected, IOError
-    Rails.logger.info("AI SDK client disconnected while reporting an error")
-  end
 
   def allow_local_client
     origin = request.headers["Origin"]
