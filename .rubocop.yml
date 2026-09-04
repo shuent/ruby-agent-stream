@@ -1,0 +1,12 @@
+AllCops:
+  TargetRubyVersion: 3.2
+  NewCops: enable
+  CacheRootDirectory: tmp/rubocop_cache
+  Exclude:
+    - "examples/**/*"
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes

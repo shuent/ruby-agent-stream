@@ -1,0 +1,15 @@
+/.bundle/
+/.yardoc
+/_yardoc/
+/coverage/
+/doc/
+/pkg/
+/spec/reports/
+/tmp/
+/examples/react_client/node_modules/
+/examples/react_client/dist/
+/examples/rails_demo/log/*.log
+/examples/rails_demo/tmp/*
+/examples/rails_demo/storage/*
+/examples/rails_demo/config/master.key
+/examples/rails_demo/config/credentials*.yml.enc

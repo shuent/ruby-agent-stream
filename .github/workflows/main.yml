@@ -1,0 +1,73 @@
+name: Ruby
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Ruby ${{ matrix.ruby }}
+    strategy:
+      matrix:
+        ruby:
+          - '3.2'
+          - '3.3'
+          - '3.4'
+          - '4.0'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Run the default task
+        run: bundle exec rake
+      - name: Validate RBS
+        run: bundle exec rbs -I sig validate
+      - name: Build the gem
+        run: gem build ruby_llm-ai_sdk.gemspec
+
+  rails-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+      - name: Install Rails demo dependencies
+        working-directory: examples/rails_demo
+        run: bundle install
+      - name: Test Rails streaming demo
+        working-directory: examples/rails_demo
+        run: bin/rails test
+
+  react-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: examples/react_client/package-lock.json
+      - name: Install React client dependencies
+        working-directory: examples/react_client
+        run: npm ci
+      - name: Test useChat client
+        working-directory: examples/react_client
+        run: npm test -- --run
+      - name: Build useChat client
+        working-directory: examples/react_client
+        run: npm run build
