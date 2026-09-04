@@ -1,5 +1,5 @@
 # A deterministic model stand-in that streams plain provider event objects.
-# It deliberately knows nothing about AIStream.
+# It deliberately knows nothing about AgentStream.
 class DemoModel
   ProviderEvent = Data.define(:type, :payload)
 

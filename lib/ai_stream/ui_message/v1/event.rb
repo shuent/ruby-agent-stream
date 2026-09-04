@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module AIStream
+module AgentStream
   module UIMessage
     module V1
       # A validated, provider-neutral AI SDK UI Message Stream Protocol event.

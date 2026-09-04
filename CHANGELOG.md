@@ -1,7 +1,7 @@
 ## [Unreleased]
 
 - Replaced the RubyLLM-specific stream with validated, provider-neutral
-  `AIStream::UIMessage::V1::Event` and `Stream` types.
+  `AgentStream::UIMessage::V1::Event` and `Stream` types.
 - Added adapters for RubyLLM, official OpenAI Responses streams, and official
   Anthropic Messages streams.
 - Added runtime event-schema and protocol-order validation, RBS signatures,

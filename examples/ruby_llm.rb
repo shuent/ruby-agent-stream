@@ -9,5 +9,5 @@ sdk_events = Enumerator.new do |events|
   RubyLLM.chat.ask(prompt) { |chunk| events << chunk }
 end
 
-ui_stream = AIStream::UIMessage::V1::Stream.new($stdout)
-AIStream::Adapters::RubyLLM.new(sdk_events).each { |event| ui_stream << event }
+ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
+AgentStream::Adapters::RubyLLM.new(sdk_events).each { |event| ui_stream << event }

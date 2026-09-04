@@ -4,7 +4,7 @@ require_relative "lib/ai_stream/version"
 
 Gem::Specification.new do |spec|
   spec.name = "ruby-ai-stream"
-  spec.version = AIStream::VERSION
+  spec.version = AgentStream::VERSION
   spec.authors = ["shuent"]
   spec.email = ["shunshun.43@gmail.com"]
 

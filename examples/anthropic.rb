@@ -12,5 +12,5 @@ sdk_stream = client.messages.stream(
   messages: [{ role: :user, content: prompt }]
 )
 
-ui_stream = AIStream::UIMessage::V1::Stream.new($stdout)
-AIStream::Adapters::Anthropic.new(sdk_stream).each { |event| ui_stream << event }
+ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
+AgentStream::Adapters::Anthropic.new(sdk_stream).each { |event| ui_stream << event }

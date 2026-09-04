@@ -13,13 +13,13 @@ class AIStreamRubyLLMAdapterTest < Minitest::Test
     assert_instance_of RubyLLM::Message, sdk_events.find(&:tool_result?)
 
     ids = %w[1 2]
-    adapter = AIStream::Adapters::RubyLLM.new(
+    adapter = AgentStream::Adapters::RubyLLM.new(
       sdk_events,
       message_id: "message-1",
       id_generator: -> { ids.shift }
     )
     events = adapter.to_a
-    stream = AIStream::UIMessage::V1::Stream.new
+    stream = AgentStream::UIMessage::V1::Stream.new
     events.each { |event| stream << event }
 
     assert_equal(
@@ -42,7 +42,7 @@ class AIStreamRubyLLMAdapterTest < Minitest::Test
     call = RubyLLM::ToolCall.new(id: "call-1", name: "weather", arguments: "{nope")
     chunk = RubyLLM::Chunk.new(role: :assistant, content: nil, tool_calls: { 0 => call })
 
-    events = AIStream::Adapters::RubyLLM.new([chunk]).to_a
+    events = AgentStream::Adapters::RubyLLM.new([chunk]).to_a
 
     assert_equal :tool_input_error, event(events, :tool_input_error).type
   end

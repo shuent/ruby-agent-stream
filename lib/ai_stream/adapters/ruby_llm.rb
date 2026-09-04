@@ -6,7 +6,7 @@ require "ruby_llm"
 
 require_relative "../adapters"
 
-module AIStream
+module AgentStream
   module Adapters
     # Converts RubyLLM chunks and tool-result messages into validated AI SDK UI
     # Message Stream Protocol events.

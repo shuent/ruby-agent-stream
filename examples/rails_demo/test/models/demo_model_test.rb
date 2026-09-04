@@ -6,11 +6,11 @@ class DemoModelTest < ActiveSupport::TestCase
 
     events = provider_events.to_a
     assert_instance_of DemoModel::ProviderEvent, events.first
-    refute_kind_of AIStream::UIMessage::V1::Event, events.first
+    refute_kind_of AgentStream::UIMessage::V1::Event, events.first
 
-    ui_stream = AIStream::UIMessage::V1::Stream.new
+    ui_stream = AgentStream::UIMessage::V1::Stream.new
     events.each do |provider_event|
-      ui_stream << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+      ui_stream << AgentStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
     end
     types = decoded_chunks(ui_stream).filter_map { |chunk| chunk["type"] }
 
@@ -23,10 +23,10 @@ class DemoModelTest < ActiveSupport::TestCase
 
   test "provider errors are converted to protocol errors" do
     provider_events = DemoModel.new(sleeper: ->(_) {}).stream(scenario: "error")
-    ui_stream = AIStream::UIMessage::V1::Stream.new
+    ui_stream = AgentStream::UIMessage::V1::Stream.new
 
     provider_events.each do |provider_event|
-      ui_stream << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+      ui_stream << AgentStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
     end
     error = decoded_chunks(ui_stream).find { |chunk| chunk["type"] == "error" }
 

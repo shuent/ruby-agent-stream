@@ -2,7 +2,7 @@
 
 require_relative "ui_message/v1"
 
-module AIStream
+module AgentStream
   # Provider SDK event adapters. Each adapter yields validated UIMessage events
   # and has no dependency on UIMessage::V1::Stream.
   module Adapters

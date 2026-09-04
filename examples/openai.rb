@@ -9,5 +9,5 @@ sdk_stream = client.responses.stream(
   input: ARGV.join(" ").then { |prompt| prompt.empty? ? "Write one short greeting." : prompt }
 )
 
-ui_stream = AIStream::UIMessage::V1::Stream.new($stdout)
-AIStream::Adapters::OpenAI.new(sdk_stream).each { |event| ui_stream << event }
+ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
+AgentStream::Adapters::OpenAI.new(sdk_stream).each { |event| ui_stream << event }

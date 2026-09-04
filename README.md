@@ -2,7 +2,7 @@
 
 Ruby の AI SDK が返す event を、[AI SDK UI Message Stream Protocol v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) の SSE に変換するための小さなライブラリです。
 
-中心にあるのは provider 非依存の `AIStream::UIMessage::V1::Event` と `AIStream::UIMessage::V1::Stream` です。OpenAI、Anthropic、RubyLLM は独立した adapter であり、Stream 自体は各 SDK の class を知りません。
+中心にあるのは provider 非依存の `AgentStream::UIMessage::V1::Event` と `AgentStream::UIMessage::V1::Stream` です。OpenAI、Anthropic、RubyLLM は独立した adapter であり、Stream 自体は各 SDK の class を知りません。
 
 ```text
 OpenAI / Anthropic / RubyLLM の event
@@ -24,7 +24,7 @@ OpenAI / Anthropic / RubyLLM の event
 - `Stream`: message、step、part、tool の順序を検証し、SSE frame にする
 - `Adapters::*`: SDK event の解釈、tool input JSON の蓄積、provider metadata の変換を行う
 
-この境界により、新しい provider は gem 本体を変更せず `Enumerable<AIStream::UIMessage::V1::Event>` を実装すれば追加できます。
+この境界により、新しい provider は gem 本体を変更せず `Enumerable<AgentStream::UIMessage::V1::Event>` を実装すれば追加できます。
 
 ## Installation
 
@@ -51,8 +51,8 @@ provider を使わず、protocol event を直接送る最小例です。
 ```ruby
 require "ai_stream"
 
-Event = AIStream::UIMessage::V1::Event
-ui_stream = AIStream::UIMessage::V1::Stream.new
+Event = AgentStream::UIMessage::V1::Event
+ui_stream = AgentStream::UIMessage::V1::Stream.new
 
 ui_stream << Event.new(:start, message_id: "assistant-1")
 ui_stream << Event.new(:start_step)
@@ -83,8 +83,8 @@ sdk_stream = client.responses.stream(
   input: "Write one short greeting."
 )
 
-ui_stream = AIStream::UIMessage::V1::Stream.new($stdout)
-AIStream::Adapters::OpenAI.new(sdk_stream).each do |event|
+ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
+AgentStream::Adapters::OpenAI.new(sdk_stream).each do |event|
   ui_stream << event
 end
 ```
@@ -106,8 +106,8 @@ sdk_stream = client.messages.stream(
   messages: [{ role: :user, content: "Write one short greeting." }]
 )
 
-ui_stream = AIStream::UIMessage::V1::Stream.new($stdout)
-AIStream::Adapters::Anthropic.new(sdk_stream).each do |event|
+ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
+AgentStream::Adapters::Anthropic.new(sdk_stream).each do |event|
   ui_stream << event
 end
 ```
@@ -128,8 +128,8 @@ sdk_events = Enumerator.new do |events|
   end
 end
 
-ui_stream = AIStream::UIMessage::V1::Stream.new($stdout)
-AIStream::Adapters::RubyLLM.new(sdk_events).each do |event|
+ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
+AgentStream::Adapters::RubyLLM.new(sdk_events).each do |event|
   ui_stream << event
 end
 ```
@@ -145,11 +145,11 @@ class ChatsController < ApplicationController
   include ActionController::Live
 
   def create
-    ui_stream = AIStream::UIMessage::V1::Stream.new(response.stream)
+    ui_stream = AgentStream::UIMessage::V1::Stream.new(response.stream)
     ui_stream.headers.each { |name, value| response.headers[name] = value }
 
     model.stream_events(params.require(:prompt)).each do |provider_event|
-      ui_stream << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+      ui_stream << AgentStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
     end
   rescue ActionController::Live::ClientDisconnected, IOError
     Rails.logger.info("UI message client disconnected")
@@ -177,11 +177,11 @@ class MyProviderAdapter
   def each
     return enum_for(:each) unless block_given?
 
-    yield AIStream::UIMessage::V1::Event.new(:start)
-    yield AIStream::UIMessage::V1::Event.new(:start_step)
+    yield AgentStream::UIMessage::V1::Event.new(:start)
+    yield AgentStream::UIMessage::V1::Event.new(:start_step)
     # @events を Event に変換して yield
-    yield AIStream::UIMessage::V1::Event.new(:finish_step)
-    yield AIStream::UIMessage::V1::Event.new(:finish, finish_reason: :stop)
+    yield AgentStream::UIMessage::V1::Event.new(:finish_step)
+    yield AgentStream::UIMessage::V1::Event.new(:finish, finish_reason: :stop)
     self
   end
 end

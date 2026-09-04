@@ -12,8 +12,8 @@ class AIStreamOpenAIAdapterTest < Minitest::Test
     assert_instance_of OpenAI::Models::Responses::ResponseCreatedEvent, sdk_events.first
     assert_instance_of OpenAI::Models::Responses::ResponseCompletedEvent, sdk_events.last
 
-    events = AIStream::Adapters::OpenAI.new(sdk_events).to_a
-    stream = AIStream::UIMessage::V1::Stream.new
+    events = AgentStream::Adapters::OpenAI.new(sdk_events).to_a
+    stream = AgentStream::UIMessage::V1::Stream.new
     events.each { |event| stream << event }
 
     assert_equal(
@@ -41,7 +41,7 @@ class AIStreamOpenAIAdapterTest < Minitest::Test
       sequence_number: 5
     )
 
-    events = AIStream::Adapters::OpenAI.new(sdk_events).to_a
+    events = AgentStream::Adapters::OpenAI.new(sdk_events).to_a
     input_error = event(events, :tool_input_error)
 
     assert_equal "{nope", input_error[:input]
@@ -60,7 +60,7 @@ class AIStreamOpenAIAdapterTest < Minitest::Test
       snapshot: "hello"
     )
 
-    events = AIStream::Adapters::OpenAI.new([helper], message_id: "message-1").to_a
+    events = AgentStream::Adapters::OpenAI.new([helper], message_id: "message-1").to_a
 
     assert_equal "hello", event(events, :text_delta)[:delta]
   end

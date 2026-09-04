@@ -2,7 +2,7 @@
 
 require "json"
 
-module AIStream
+module AgentStream
   module UIMessage
     module V1
       # Validates event order and writes AI SDK UI Message Stream Protocol v1 SSE frames.

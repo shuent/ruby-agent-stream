@@ -5,7 +5,7 @@ require "openai"
 
 require_relative "../adapters"
 
-module AIStream
+module AgentStream
   module Adapters
     # Converts official openai-ruby Responses streaming events into validated
     # AI SDK UI Message Stream Protocol events.

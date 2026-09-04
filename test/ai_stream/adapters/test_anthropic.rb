@@ -12,8 +12,8 @@ class AIStreamAnthropicAdapterTest < Minitest::Test
     assert_instance_of Anthropic::Models::RawMessageStartEvent, sdk_events.first
     assert_instance_of Anthropic::Models::RawMessageStopEvent, sdk_events.last
 
-    events = AIStream::Adapters::Anthropic.new(sdk_events).to_a
-    stream = AIStream::UIMessage::V1::Stream.new
+    events = AgentStream::Adapters::Anthropic.new(sdk_events).to_a
+    stream = AgentStream::UIMessage::V1::Stream.new
     events.each { |event| stream << event }
 
     assert_equal(
@@ -36,7 +36,7 @@ class AIStreamAnthropicAdapterTest < Minitest::Test
   def test_high_level_helper_events_are_ignored
     helper = Anthropic::Streaming::TextEvent.new(type: :text, text: "duplicate", snapshot: "duplicate")
 
-    events = AIStream::Adapters::Anthropic.new([helper], message_id: "message-1").to_a
+    events = AgentStream::Adapters::Anthropic.new([helper], message_id: "message-1").to_a
 
     assert_equal %i[start start_step finish_step finish], events.map(&:type)
   end

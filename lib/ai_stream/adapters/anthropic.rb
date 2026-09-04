@@ -5,7 +5,7 @@ require "anthropic"
 
 require_relative "../adapters"
 
-module AIStream
+module AgentStream
   module Adapters
     # Converts official anthropic-sdk-ruby Messages streaming events into
     # validated AI SDK UI Message Stream Protocol events.

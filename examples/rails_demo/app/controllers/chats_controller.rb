@@ -5,11 +5,11 @@ class ChatsController < ApplicationController
   before_action :allow_local_client
 
   def create
-    ui_stream = AIStream::UIMessage::V1::Stream.new(response.stream)
+    ui_stream = AgentStream::UIMessage::V1::Stream.new(response.stream)
     ui_stream.headers.each { |name, value| response.headers[name] = value }
 
     DemoModel.new.stream(scenario: params.fetch(:scenario, "complete")).each do |provider_event|
-      ui_stream << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+      ui_stream << AgentStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
     end
   rescue ActionController::Live::ClientDisconnected, IOError
     Rails.logger.info("UI message client disconnected")

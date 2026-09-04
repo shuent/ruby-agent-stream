@@ -4,7 +4,7 @@ Rails 8.1 の `ActionController::Live` で、modelが返すplain event objectを
 
 ```ruby
 DemoModel.new.stream(scenario: params.fetch(:scenario, "complete")).each do |provider_event|
-  ui_stream << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+  ui_stream << AgentStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
 end
 ```
 
