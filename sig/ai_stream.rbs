@@ -1,0 +1,92 @@
+module AIStream
+  VERSION: String
+
+  module UIMessage
+    module V1
+      type json_value = nil | bool | String | Integer | Float | Array[json_value] | Hash[String | Symbol, json_value]
+      type json_object = Hash[String | Symbol, json_value]
+      type provider_metadata = Hash[String | Symbol, json_object]
+      type finish_reason = :stop | :length | :content_filter | :tool_calls | :error | :other | "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other"
+
+      class Event
+        FINISH_REASONS: Array[String]
+        SCHEMAS: Hash[Symbol, untyped]
+
+        class Error < ArgumentError
+        end
+        class UnknownTypeError < Error
+        end
+        class SchemaError < Error
+        end
+        class JSONCompatibilityError < SchemaError
+        end
+
+        attr_reader type: Symbol
+        attr_reader attributes: Hash[Symbol, json_value]
+
+        def initialize: (:start, ?message_id: String, ?message_metadata: json_value) -> void
+                      | (:start_step) -> void
+                      | (:reset_step) -> void
+                      | (:finish_step) -> void
+                      | (:finish, ?finish_reason: finish_reason, ?message_metadata: json_value) -> void
+                      | (:abort, ?reason: String) -> void
+                      | (:error, error_text: String) -> void
+                      | (:message_metadata, message_metadata: json_value) -> void
+                      | (:text_start, id: String, ?provider_metadata: provider_metadata) -> void
+                      | (:text_delta, id: String, delta: String, ?provider_metadata: provider_metadata) -> void
+                      | (:text_end, id: String, ?provider_metadata: provider_metadata) -> void
+                      | (:reasoning_start, id: String, ?provider_metadata: provider_metadata) -> void
+                      | (:reasoning_delta, id: String, delta: String, ?provider_metadata: provider_metadata) -> void
+                      | (:reasoning_end, id: String, ?provider_metadata: provider_metadata) -> void
+                      | (:source_url, source_id: String, url: String, ?title: String, ?provider_metadata: provider_metadata) -> void
+                      | (:source_document, source_id: String, media_type: String, title: String, ?filename: String, ?provider_metadata: provider_metadata) -> void
+                      | (:file, url: String, media_type: String, ?provider_metadata: provider_metadata) -> void
+                      | (:reasoning_file, url: String, media_type: String, ?provider_metadata: provider_metadata) -> void
+                      | (:data, name: String, data: json_value, ?id: String, ?transient: bool) -> void
+                      | (:custom, kind: String, ?provider_metadata: provider_metadata) -> void
+                      | (:tool_input_start, tool_call_id: String, tool_name: String, ?provider_executed: bool, ?provider_metadata: provider_metadata, ?tool_metadata: json_object, ?dynamic: bool, ?title: String) -> void
+                      | (:tool_input_delta, tool_call_id: String, input_text_delta: String) -> void
+                      | (:tool_input_available, tool_call_id: String, tool_name: String, input: json_value, ?provider_executed: bool, ?provider_metadata: provider_metadata, ?tool_metadata: json_object, ?dynamic: bool, ?title: String) -> void
+                      | (:tool_input_error, tool_call_id: String, tool_name: String, input: json_value, error_text: String, ?provider_executed: bool, ?provider_metadata: provider_metadata, ?tool_metadata: json_object, ?dynamic: bool, ?title: String) -> void
+                      | (:tool_approval_request, approval_id: String, tool_call_id: String, ?approval_descriptor: json_value, ?reason: String, ?is_automatic: bool, ?signature: String) -> void
+                      | (:tool_approval_response, approval_id: String, approved: bool, ?reason: String, ?provider_executed: bool, ?provider_metadata: provider_metadata) -> void
+                      | (:tool_output_available, tool_call_id: String, output: json_value, ?provider_executed: bool, ?provider_metadata: provider_metadata, ?tool_metadata: json_object, ?dynamic: bool, ?title: String, ?preliminary: bool) -> void
+                      | (:tool_output_error, tool_call_id: String, error_text: String, ?provider_executed: bool, ?provider_metadata: provider_metadata, ?tool_metadata: json_object, ?dynamic: bool) -> void
+                      | (:tool_output_denied, tool_call_id: String) -> void
+
+        def []: (Symbol name) -> json_value
+        def to_h: () -> Hash[String, json_value]
+      end
+
+      interface _StringSink
+        def write: (String) -> untyped
+      end
+
+      class Stream
+        include Enumerable[String]
+
+        HEADERS: Hash[String, String]
+        TERMINAL_TYPES: Array[Symbol]
+
+        class Error < StandardError
+        end
+        class ProtocolError < Error
+        end
+        class FinishedError < Error
+        end
+
+        attr_reader frames: Array[String]
+
+        def self.headers: () -> Hash[String, String]
+        def initialize: (?_StringSink? sink) -> void
+        def headers: () -> Hash[String, String]
+        def started?: () -> bool
+        def finished?: () -> bool
+        def to_a: () -> Array[String]
+        def each: () { (String) -> void } -> self
+                | () -> Enumerator[String, self]
+        def <<: (Event event) -> self
+      end
+    end
+  end
+end

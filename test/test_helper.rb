@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
-require "ruby_llm/ai_sdk"
+require "ai_stream"
 require "json"
 require "stringio"
 
