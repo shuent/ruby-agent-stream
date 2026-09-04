@@ -33,7 +33,7 @@ OpenAI / Anthropic / RubyLLM の event
 公開前の checkout を使う場合:
 
 ```ruby
-gem "ruby-agent-stream", path: "../ruby-agent-stream"
+gem "ruby-agent-stream", git: "git@github.com:shuent/ruby-agent-stream.git"
 ```
 
 使う provider SDK だけを application 側に追加します。この gem はすべての SDK を runtime dependency にはしません。

@@ -33,7 +33,7 @@ A new provider can be supported outside this gem by implementing an `Enumerable<
 Use a local checkout before the gem is published:
 
 ```ruby
-gem "ruby-agent-stream", path: "../ruby-agent-stream"
+gem "ruby-agent-stream", git: "git@github.com:shuent/ruby-agent-stream.git"
 ```
 
 Add only the provider SDKs your application uses. They are not runtime dependencies of this gem.
