@@ -81,7 +81,7 @@ export function App() {
     <main>
       <header className="hero">
         <p className="eyebrow">protocol verification client</p>
-        <h1>OpenAI events <span>→</span> Ruby adapter <span>→</span> AI SDK useChat</h1>
+        <h1>Model events <span>→</span> Ruby Event <span>→</span> AI SDK useChat</h1>
         <p>
           Rails emits real SSE frames. This React island delegates parsing,
           accumulation, tool state and cancellation to <code>useChat</code>.

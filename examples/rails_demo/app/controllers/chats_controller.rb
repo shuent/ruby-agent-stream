@@ -1,5 +1,3 @@
-require "ai_stream/adapters/openai"
-
 class ChatsController < ApplicationController
   include ActionController::Live
 
@@ -11,7 +9,13 @@ class ChatsController < ApplicationController
     ui_stream.headers.each { |name, value| response.headers[name] = value }
 
     provider_events = get_from_model
-    AIStream::Adapters::OpenAI.new(provider_events).each do |event|
+    ui_events = Enumerator.new do |events|
+      provider_events.each do |provider_event|
+        events << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+      end
+    end
+
+    ui_events.each do |event|
       ui_stream << event
     end
   rescue ActionController::Live::ClientDisconnected, IOError
@@ -29,7 +33,7 @@ class ChatsController < ApplicationController
   private
 
   def get_from_model
-    DemoModel.new.responses_stream(scenario: params.fetch(:scenario, "complete"))
+    DemoModel.new.stream(scenario: params.fetch(:scenario, "complete"))
   end
 
   def allow_local_client

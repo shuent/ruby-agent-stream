@@ -1,22 +1,21 @@
-# OpenAI adapter + Rails streaming server
+# Plain model events + Rails streaming server
 
-Rails 8.1 の `ActionController::Live` で、provider SDK event をadapter経由で `AIStream::UIMessage::V1::Stream` へ流すdemoです。Controllerには変換の全体像がそのまま現れます。
+Rails 8.1 の `ActionController::Live` で、modelが返すplain event objectをUI Message eventへ変換して流すdemoです。Controllerには取得、変換、投入の全体像がそのまま現れます。
 
 ```ruby
 provider_events = get_from_model
-AIStream::Adapters::OpenAI.new(provider_events).each do |event|
+ui_events = Enumerator.new do |events|
+  provider_events.each do |provider_event|
+    events << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+  end
+end
+
+ui_events.each do |event|
   ui_stream << event
 end
 ```
 
-API keyなしで動かせるよう、`DemoModel` はrepositoryのfixtureを実際のopenai-ruby event modelへdecodeして返します。実applicationでは `get_from_model` を次のようなSDK呼び出しに置き換えます。
-
-```ruby
-OpenAI::Client.new.responses.stream(
-  model: ENV.fetch("OPENAI_MODEL"),
-  input: params.require(:message)
-)
-```
+`DemoModel` は `Data.define(:type, :payload)` で作ったhardcoded eventを `Enumerator` からyieldするだけで、AIStreamを知りません。実applicationでは `get_from_model` をprovider SDKやagentのevent streamに、変換部分をprovider固有のmappingまたは組み込みadapterに置き換えます。
 
 ```bash
 bundle install
@@ -35,4 +34,4 @@ curl -N -X POST \
 
 scenario は `complete`、`error`、`slow` です。`../react_client` は `/chat` を port 3000 に proxy し、AI SDK の `useChat` で同じ response を消費します。
 
-AnthropicやRubyLLMを使う場合も、`get_from_model` とadapter classだけを交換します。Controllerはheadersを最初のeventより前に設定し、`ensure` で `response.stream` をcloseします。
+Controllerはheadersを最初のeventより前に設定し、`ensure` で `response.stream` をcloseします。

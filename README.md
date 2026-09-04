@@ -149,7 +149,13 @@ class ChatsController < ApplicationController
     ui_stream.headers.each { |name, value| response.headers[name] = value }
 
     provider_events = get_from_model
-    AIStream::Adapters::OpenAI.new(provider_events).each do |event|
+    ui_events = Enumerator.new do |events|
+      provider_events.each do |provider_event|
+        events << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+      end
+    end
+
+    ui_events.each do |event|
       ui_stream << event
     end
   rescue ActionController::Live::ClientDisconnected, IOError
@@ -161,10 +167,7 @@ class ChatsController < ApplicationController
   private
 
   def get_from_model
-    OpenAI::Client.new.responses.stream(
-      model: ENV.fetch("OPENAI_MODEL"),
-      input: params.require(:prompt)
-    )
+    model.stream_events(params.require(:prompt))
   end
 end
 ```
@@ -203,7 +206,7 @@ adapter の出力も `ui_stream << event` を通るため、Event の schema と
 - `examples/openai.rb`: official OpenAI Responses stream
 - `examples/anthropic.rb`: official Anthropic Messages stream
 - `examples/ruby_llm.rb`: RubyLLM callback を Enumerator に接続
-- `examples/rails_demo`: OpenAI SDK event → adapter → Rails SSE の流れをControllerに示す、API key不要のdemo
+- `examples/rails_demo`: plain model event → `Event` → Rails SSE の流れをControllerに示すdemo
 - `examples/react_client`: `@ai-sdk/react` の `useChat` で Rails demo を消費
 
 Rails と React の end-to-end demo:
