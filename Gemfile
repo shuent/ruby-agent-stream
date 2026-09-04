@@ -2,7 +2,7 @@
 
 source "https://rubygems.org"
 
-# Specify runtime dependencies in ruby-ai-stream.gemspec.
+# Specify runtime dependencies in ruby-agent-stream.gemspec.
 gemspec
 
 gem "irb"

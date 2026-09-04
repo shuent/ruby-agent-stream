@@ -32,7 +32,7 @@ jobs:
       - name: Validate RBS
         run: bundle exec rbs -I sig validate
       - name: Build the gem
-        run: gem build ruby-ai-stream.gemspec
+        run: gem build ruby-agent-stream.gemspec
 
   rails-demo:
     runs-on: ubuntu-latest

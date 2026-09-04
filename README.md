@@ -1,8 +1,8 @@
-# ruby-ai-stream
+# ruby-agent-stream
 
 English | [日本語](README.ja.md)
 
-`ruby-ai-stream` converts events from Ruby AI SDKs into [AI SDK UI Message Stream Protocol v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) SSE. It lets you keep an AI agent backend in Rails while using AI SDK's `useChat` on the client.
+`ruby-agent-stream` converts events from Ruby AI SDKs into [AI SDK UI Message Stream Protocol v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) SSE. It lets you keep an AI agent backend in Rails while using AI SDK's `useChat` on the client.
 
 The provider-neutral core consists of `AgentStream::UIMessage::V1::Event` and `AgentStream::UIMessage::V1::Stream`. OpenAI, Anthropic, and RubyLLM support lives in separate adapters; the stream itself has no dependency on their SDK classes.
 
@@ -33,7 +33,7 @@ A new provider can be supported outside this gem by implementing an `Enumerable<
 Use a local checkout before the gem is published:
 
 ```ruby
-gem "ruby-ai-stream", path: "../ruby-ai-stream"
+gem "ruby-agent-stream", path: "../ruby-agent-stream"
 ```
 
 Add only the provider SDKs your application uses. They are not runtime dependencies of this gem.
@@ -207,7 +207,7 @@ npm run dev
 bundle exec rake test
 bundle exec rbs validate
 bundle exec rubocop
-gem build ruby-ai-stream.gemspec
+gem build ruby-agent-stream.gemspec
 ```
 
 OpenAI and Anthropic fixtures are restored through their official SDK model converters. RubyLLM tests instantiate its real event classes. Every adapter's output is then passed through the real `UIMessage::V1::Stream`.

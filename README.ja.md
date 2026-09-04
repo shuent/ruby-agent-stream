@@ -1,4 +1,4 @@
-# ruby-ai-stream
+# ruby-agent-stream
 
 [English](README.md) | 日本語
 
@@ -33,7 +33,7 @@ OpenAI / Anthropic / RubyLLM の event
 公開前の checkout を使う場合:
 
 ```ruby
-gem "ruby-ai-stream", path: "../ruby-ai-stream"
+gem "ruby-agent-stream", path: "../ruby-agent-stream"
 ```
 
 使う provider SDK だけを application 側に追加します。この gem はすべての SDK を runtime dependency にはしません。
@@ -219,7 +219,7 @@ npm run dev
 bundle exec rake test
 bundle exec rbs validate
 bundle exec rubocop
-gem build ruby-ai-stream.gemspec
+gem build ruby-agent-stream.gemspec
 ```
 
 adapter fixture は単なる test double ではありません。保存した実形式 JSON を official OpenAI / Anthropic SDK の model converter で復元し、RubyLLM は実 class (`Chunk`、`Message`、`ToolCall`、`Thinking`) を構築してから変換しています。最後に全 adapter 出力を本物の `UIMessage::V1::Stream` に投入して検証します。
