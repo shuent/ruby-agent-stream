@@ -1,0 +1,14 @@
+{"type":"message_start","message":{"id":"msg_fixture_001","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":12,"output_tokens":1}}}
+{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}
+{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"I should use the weather tool."}}
+{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"signed-thinking"}}
+{"type":"content_block_stop","index":0}
+{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_weather_001","name":"weather","input":{}}}
+{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"city\":\""}}
+{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"Tokyo\"}"}}
+{"type":"content_block_stop","index":1}
+{"type":"content_block_start","index":2,"content_block":{"type":"text","text":"","citations":[]}}
+{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"I will check Tokyo."}}
+{"type":"content_block_stop","index":2}
+{"type":"message_delta","delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":18}}
+{"type":"message_stop"}

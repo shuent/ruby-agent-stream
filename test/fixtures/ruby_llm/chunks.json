@@ -1,0 +1,41 @@
+[
+  {
+    "kind": "chunk",
+    "model_id": "gpt-5.4",
+    "thinking": {"text": "I should check the weather.", "signature": "signed-thinking"},
+    "content": null
+  },
+  {
+    "kind": "chunk",
+    "model_id": "gpt-5.4",
+    "content": "Checking Tokyo. "
+  },
+  {
+    "kind": "chunk",
+    "model_id": "gpt-5.4",
+    "content": null,
+    "tool_calls": {
+      "0": {"id": "call_weather_001", "name": "weather", "arguments": "{\"city\":\""}
+    }
+  },
+  {
+    "kind": "chunk",
+    "model_id": "gpt-5.4",
+    "content": null,
+    "tool_calls": {
+      "0": {"id": null, "name": null, "arguments": "Tokyo\"}"}
+    }
+  },
+  {
+    "kind": "tool_result",
+    "tool_call_id": "call_weather_001",
+    "content": {"temperature": 24, "unit": "celsius"}
+  },
+  {
+    "kind": "chunk",
+    "model_id": "gpt-5.4",
+    "content": "It is 24°C.",
+    "input_tokens": 11,
+    "output_tokens": 9
+  }
+]

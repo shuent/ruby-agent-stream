@@ -1,0 +1,14 @@
+{"type":"response.created","sequence_number":0,"response":{"id":"resp_fixture_001","model":"gpt-5.4","status":"in_progress"}}
+{"type":"response.reasoning_summary_part.added","item_id":"rs_001","output_index":0,"part":{"type":"summary_text","text":""},"sequence_number":1,"summary_index":0}
+{"type":"response.reasoning_summary_text.delta","delta":"I should check the weather.","item_id":"rs_001","output_index":0,"sequence_number":2,"summary_index":0}
+{"type":"response.reasoning_summary_part.done","item_id":"rs_001","output_index":0,"part":{"type":"summary_text","text":"I should check the weather."},"sequence_number":3,"summary_index":0}
+{"type":"response.output_item.added","item":{"type":"function_call","id":"fc_item_001","call_id":"call_weather_001","name":"weather","arguments":"","status":"in_progress"},"output_index":1,"sequence_number":4}
+{"type":"response.function_call_arguments.delta","delta":"{\"city\":\"","item_id":"fc_item_001","output_index":1,"sequence_number":5}
+{"type":"response.function_call_arguments.delta","delta":"Tokyo\"}","item_id":"fc_item_001","output_index":1,"sequence_number":6}
+{"type":"response.function_call_arguments.done","arguments":"{\"city\":\"Tokyo\"}","item_id":"fc_item_001","name":"weather","output_index":1,"sequence_number":7}
+{"type":"response.output_item.done","item":{"type":"function_call","id":"fc_item_001","call_id":"call_weather_001","name":"weather","arguments":"{\"city\":\"Tokyo\"}","status":"completed"},"output_index":1,"sequence_number":8}
+{"type":"response.content_part.added","content_index":0,"item_id":"msg_item_001","output_index":2,"part":{"type":"output_text","text":"","annotations":[]},"sequence_number":9}
+{"type":"response.output_text.delta","content_index":0,"delta":"It is 24°C.","item_id":"msg_item_001","logprobs":[],"output_index":2,"sequence_number":10}
+{"type":"response.output_text.done","content_index":0,"item_id":"msg_item_001","logprobs":[],"output_index":2,"sequence_number":11,"text":"It is 24°C."}
+{"type":"response.content_part.done","content_index":0,"item_id":"msg_item_001","output_index":2,"part":{"type":"output_text","text":"It is 24°C.","annotations":[]},"sequence_number":12}
+{"type":"response.completed","sequence_number":13,"response":{"id":"resp_fixture_001","model":"gpt-5.4","status":"completed","usage":{"input_tokens":11,"input_tokens_details":{"cached_tokens":0},"output_tokens":9,"output_tokens_details":{"reasoning_tokens":4},"total_tokens":20}}}

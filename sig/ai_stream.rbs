@@ -1,6 +1,43 @@
 module AIStream
   VERSION: String
 
+  module Adapters
+    class Error < StandardError
+    end
+
+    class UnsupportedEventError < Error
+    end
+
+    class OpenAI
+      include Enumerable[UIMessage::V1::Event]
+
+      def initialize: (Enumerable[untyped] events, ?message_id: String?) -> void
+      def each: () { (UIMessage::V1::Event) -> void } -> self
+              | () -> Enumerator[UIMessage::V1::Event, self]
+    end
+
+    class Anthropic
+      include Enumerable[UIMessage::V1::Event]
+
+      def initialize: (Enumerable[untyped] events, ?message_id: String?) -> void
+      def each: () { (UIMessage::V1::Event) -> void } -> self
+              | () -> Enumerator[UIMessage::V1::Event, self]
+    end
+
+    class RubyLLM
+      include Enumerable[UIMessage::V1::Event]
+
+      def initialize: (
+        Enumerable[untyped] events,
+        ?message_id: String?,
+        ?finish_reason: UIMessage::V1::finish_reason,
+        ?id_generator: ^() -> String
+      ) -> void
+      def each: () { (UIMessage::V1::Event) -> void } -> self
+              | () -> Enumerator[UIMessage::V1::Event, self]
+    end
+  end
+
   module UIMessage
     module V1
       type json_value = nil | bool | String | Integer | Float | Array[json_value] | Hash[String | Symbol, json_value]
