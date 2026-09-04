@@ -5,7 +5,7 @@ require "ai_stream/adapters/openai"
 
 # Fixture assertions intentionally keep the complete protocol sequence visible.
 # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
-class AIStreamOpenAIAdapterTest < Minitest::Test
+class AgentStreamOpenAIAdapterTest < Minitest::Test
   def test_real_responses_event_models_are_converted_and_accepted_by_stream
     sdk_events = load_fixture
 

@@ -8,7 +8,7 @@ DemoModel.new.stream(scenario: params.fetch(:scenario, "complete")).each do |pro
 end
 ```
 
-`DemoModel` は `Data.define(:type, :payload)` で作ったhardcoded eventを `Enumerator` からyieldするだけで、AIStreamを知りません。実applicationでは `DemoModel#stream` をprovider SDKやagentのevent streamに、変換部分をprovider固有のmappingまたは組み込みadapterに置き換えます。
+`DemoModel` は `Data.define(:type, :payload)` で作ったhardcoded eventを `Enumerator` からyieldするだけで、AgentStreamを知りません。実applicationでは `DemoModel#stream` をprovider SDKやagentのevent streamに、変換部分をprovider固有のmappingまたは組み込みadapterに置き換えます。
 
 ```bash
 bundle install

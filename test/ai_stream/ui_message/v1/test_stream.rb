@@ -4,7 +4,7 @@ require "test_helper"
 
 # Protocol conformance benefits from complete event sequences.
 # rubocop:disable-next Metrics/ClassLength, Metrics/MethodLength, Metrics/AbcSize
-class AIStreamUIMessageV1StreamTest < Minitest::Test
+class AgentStreamUIMessageV1StreamTest < Minitest::Test
   Event = AgentStream::UIMessage::V1::Event
   Stream = AgentStream::UIMessage::V1::Stream
 

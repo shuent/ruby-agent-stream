@@ -5,7 +5,7 @@ require "ai_stream/adapters/anthropic"
 
 # Fixture assertions intentionally keep the complete protocol sequence visible.
 # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
-class AIStreamAnthropicAdapterTest < Minitest::Test
+class AgentStreamAnthropicAdapterTest < Minitest::Test
   def test_real_messages_event_models_are_converted_and_accepted_by_stream
     sdk_events = load_fixture
 

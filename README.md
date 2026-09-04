@@ -1,52 +1,54 @@
 # ruby-ai-stream
 
-Ruby の AI SDK が返す event を、[AI SDK UI Message Stream Protocol v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) の SSE に変換するための小さなライブラリです。
+English | [日本語](README.ja.md)
 
-中心にあるのは provider 非依存の `AgentStream::UIMessage::V1::Event` と `AgentStream::UIMessage::V1::Stream` です。OpenAI、Anthropic、RubyLLM は独立した adapter であり、Stream 自体は各 SDK の class を知りません。
+`ruby-ai-stream` converts events from Ruby AI SDKs into [AI SDK UI Message Stream Protocol v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) SSE. It lets you keep an AI agent backend in Rails while using AI SDK's `useChat` on the client.
+
+The provider-neutral core consists of `AgentStream::UIMessage::V1::Event` and `AgentStream::UIMessage::V1::Stream`. OpenAI, Anthropic, and RubyLLM support lives in separate adapters; the stream itself has no dependency on their SDK classes.
 
 ```text
-OpenAI / Anthropic / RubyLLM の event
-                ↓
-       provider adapter
-                ↓ Enumerable<Event>
-        ui_stream << event
-                ↓
- UI Message Stream Protocol v1 SSE
+OpenAI / Anthropic / RubyLLM events
+                 ↓
+        provider adapter
+                 ↓ Enumerable<Event>
+         ui_stream << event
+                 ↓
+  UI Message Stream Protocol v1 SSE
+                 ↓
+              useChat
 ```
 
-## 設計
+## Design
 
-書き込み interface は `ui_stream << event` だけです。
+The only write interface is `ui_stream << event`.
 
-役割は次のように分離しています。
+- `Event` validates the event type, required and optional fields, and JSON compatibility when it is created.
+- `Stream` validates message, step, part, and tool lifecycle ordering and serializes events as SSE frames.
+- `Adapters::*` interprets provider SDK events, accumulates streamed tool input JSON, and maps provider metadata.
 
-- `Event`: event type、必須／任意 field、JSON 互換性を生成時に検証する
-- `Stream`: message、step、part、tool の順序を検証し、SSE frame にする
-- `Adapters::*`: SDK event の解釈、tool input JSON の蓄積、provider metadata の変換を行う
-
-この境界により、新しい provider は gem 本体を変更せず `Enumerable<AgentStream::UIMessage::V1::Event>` を実装すれば追加できます。
+A new provider can be supported outside this gem by implementing an `Enumerable<AgentStream::UIMessage::V1::Event>`.
 
 ## Installation
 
-公開前の checkout を使う場合:
+Use a local checkout before the gem is published:
 
 ```ruby
 gem "ruby-ai-stream", path: "../ruby-ai-stream"
 ```
 
-使う provider SDK だけを application 側に追加します。この gem はすべての SDK を runtime dependency にはしません。
+Add only the provider SDKs your application uses. They are not runtime dependencies of this gem.
 
 ```ruby
-gem "openai", "~> 0.85"       # OpenAI adapter を使う場合
-gem "anthropic", "~> 1.68"   # Anthropic adapter を使う場合
-gem "ruby_llm", "~> 1.16"    # RubyLLM adapter を使う場合
+gem "openai", "~> 0.85"       # OpenAI adapter
+gem "anthropic", "~> 1.68"   # Anthropic adapter
+gem "ruby_llm", "~> 1.16"    # RubyLLM adapter
 ```
 
-Ruby 3.3 以上が必要です。
+Ruby 3.3 or later is required.
 
-## 基本 API
+## Basic API
 
-provider を使わず、protocol event を直接送る最小例です。
+Write protocol events directly when no provider adapter is needed:
 
 ```ruby
 require "ai_stream"
@@ -65,80 +67,66 @@ ui_stream << Event.new(:finish, finish_reason: :stop)
 ui_stream.each { |frame| puts frame }
 ```
 
-`Stream.new(response.stream)` のように `#write(String)` を持つ sink を渡すと、frame は即時に書き込まれます。sink を省略すると `frames` に保持され、Rack body や test に使えます。terminal event (`finish`、`abort`、`error`) の直後には `data: [DONE]` が自動で追加されます。
+Pass a sink implementing `#write(String)`, such as `response.stream`, to write frames immediately. Without a sink, frames are retained for a Rack body or tests. A terminal event (`finish`, `abort`, or `error`) automatically appends `data: [DONE]`.
 
-不正な field や JSON 値は `Event::SchemaError` / `Event::JSONCompatibilityError`、不正な event 順序は `Stream::ProtocolError` になります。RBS も同じ public event surface を overload で定義しています。
+Invalid fields and JSON values raise `Event::SchemaError` or `Event::JSONCompatibilityError`. Invalid ordering raises `Stream::ProtocolError`. RBS declares the same public event surface with overloads.
 
-## OpenAI
+## Provider adapters
 
-official [`openai-ruby`](https://github.com/openai/openai-ruby) の Responses stream をそのまま adapter に渡します。
+### OpenAI
 
 ```ruby
 require "openai"
 require "ai_stream/adapters/openai"
 
-client = OpenAI::Client.new
-sdk_stream = client.responses.stream(
+sdk_stream = OpenAI::Client.new.responses.stream(
   model: ENV.fetch("OPENAI_MODEL"),
   input: "Write one short greeting."
 )
 
 ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
-AgentStream::Adapters::OpenAI.new(sdk_stream).each do |event|
-  ui_stream << event
-end
+AgentStream::Adapters::OpenAI.new(sdk_stream).each { |event| ui_stream << event }
 ```
 
-Responses API の text、refusal、reasoning、function call input、usage、完了／失敗 event を変換します。SDK が追加した未知の `response.*` event は forward compatibility のため無視し、provider と無関係な値は `UnsupportedEventError` にします。
+The adapter consumes the official [`openai-ruby`](https://github.com/openai/openai-ruby) Responses stream and maps text, refusal, reasoning, function-call input, usage, completion, and failure events. Unknown future `response.*` events are ignored for forward compatibility; unrelated values raise `UnsupportedEventError`.
 
-## Anthropic
-
-official [`anthropic-sdk-ruby`](https://github.com/anthropics/anthropic-sdk-ruby) の `MessageStream` は raw event と high-level helper event の両方を yield します。adapter は raw event を変換し、同じ内容の helper event は重複出力しません。
+### Anthropic
 
 ```ruby
 require "anthropic"
 require "ai_stream/adapters/anthropic"
 
-client = Anthropic::Client.new
-sdk_stream = client.messages.stream(
+sdk_stream = Anthropic::Client.new.messages.stream(
   model: ENV.fetch("ANTHROPIC_MODEL"),
   max_tokens: 512,
   messages: [{ role: :user, content: "Write one short greeting." }]
 )
 
 ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
-AgentStream::Adapters::Anthropic.new(sdk_stream).each do |event|
-  ui_stream << event
-end
+AgentStream::Adapters::Anthropic.new(sdk_stream).each { |event| ui_stream << event }
 ```
 
-text、thinking/signature、tool use input、usage、stop reason を変換します。client tool は通常の tool event、server/MCP tool use は `providerExecuted: true` になります。
+The adapter consumes the official [`anthropic-sdk-ruby`](https://github.com/anthropics/anthropic-sdk-ruby) `MessageStream`. It maps raw text, thinking, signatures, tool use, usage, and stop reasons while avoiding duplicate helper events. Client tools become ordinary tool events; server and MCP tool use sets `providerExecuted: true`.
 
-## RubyLLM
-
-RubyLLM は callback で chunk を返すため、`Enumerator` で SDK event stream にします。
+### RubyLLM
 
 ```ruby
 require "ruby_llm"
 require "ai_stream/adapters/ruby_llm"
 
 sdk_events = Enumerator.new do |events|
-  RubyLLM.chat.ask("Write one short greeting.") do |chunk|
-    events << chunk
-  end
+  RubyLLM.chat.ask("Write one short greeting.") { |chunk| events << chunk }
 end
 
 ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
-AgentStream::Adapters::RubyLLM.new(sdk_events).each do |event|
-  ui_stream << event
-end
+AgentStream::Adapters::RubyLLM.new(sdk_events).each { |event| ui_stream << event }
 ```
 
-chunk の text、thinking、URL attachment、streamed/structured tool call と、tool-result `RubyLLM::Message` を扱います。agent loop の tool result も含める場合は `after_message` callback で `message.tool_result?` の message を同じ Enumerator に追加してください。
+The RubyLLM adapter handles text, thinking, URL attachments, streamed or structured tool calls, and tool-result `RubyLLM::Message` objects. To include tool results from an agent loop, add messages for which `message.tool_result?` is true to the same enumerator from an `after_message` callback.
 
-## Rails (`ActionController::Live`)
+## Rails and `useChat`
 
-controller が HTTP transport、Stream が SSE、adapter が provider 変換を担当します。
+The controller owns HTTP transport, `Stream` owns SSE serialization, and an adapter owns provider conversion:
 
 ```ruby
 class ChatsController < ApplicationController
@@ -149,22 +137,24 @@ class ChatsController < ApplicationController
     ui_stream.headers.each { |name, value| response.headers[name] = value }
 
     model.stream_events(params.require(:prompt)).each do |provider_event|
-      ui_stream << AgentStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+      ui_stream << AgentStream::UIMessage::V1::Event.new(
+        provider_event.type,
+        **provider_event.payload
+      )
     end
   rescue ActionController::Live::ClientDisconnected, IOError
     Rails.logger.info("UI message client disconnected")
   ensure
     response.stream.close
   end
-
 end
 ```
 
-headers は最初の event より前に設定し、response stream は必ず close してください。
+Set headers before the first event and always close the response stream. AI SDK's `DefaultChatTransport` and `useChat` can consume the endpoint directly.
 
-## 独自 adapter
+## Custom adapters
 
-独自 adapter は provider event を受け取り、検証済み Event を yield するだけです。利用者側で同じ interface の adapter を gem 外に置けます。
+A custom adapter only needs to consume provider events and yield validated events:
 
 ```ruby
 class MyProviderAdapter
@@ -179,7 +169,7 @@ class MyProviderAdapter
 
     yield AgentStream::UIMessage::V1::Event.new(:start)
     yield AgentStream::UIMessage::V1::Event.new(:start_step)
-    # @events を Event に変換して yield
+    # Convert @events and yield Event instances here.
     yield AgentStream::UIMessage::V1::Event.new(:finish_step)
     yield AgentStream::UIMessage::V1::Event.new(:finish, finish_reason: :stop)
     self
@@ -187,17 +177,17 @@ class MyProviderAdapter
 end
 ```
 
-adapter の出力も `ui_stream << event` を通るため、Event の schema と Stream の順序検証を迂回できません。
+Adapter output still passes through `ui_stream << event`, so it cannot bypass event schema or lifecycle validation.
 
 ## Examples
 
 - `examples/openai.rb`: official OpenAI Responses stream
 - `examples/anthropic.rb`: official Anthropic Messages stream
-- `examples/ruby_llm.rb`: RubyLLM callback を Enumerator に接続
-- `examples/rails_demo`: plain model event → `Event` → Rails SSE の流れをControllerに示すdemo
-- `examples/react_client`: `@ai-sdk/react` の `useChat` で Rails demo を消費
+- `examples/ruby_llm.rb`: RubyLLM callback exposed as an `Enumerator`
+- `examples/rails_demo`: plain model events converted to `Event` and written as Rails SSE
+- `examples/react_client`: the Rails demo consumed by `@ai-sdk/react` `useChat`
 
-Rails と React の end-to-end demo:
+Run the Rails and React end-to-end demo:
 
 ```bash
 cd examples/rails_demo
@@ -220,11 +210,11 @@ bundle exec rubocop
 gem build ruby-ai-stream.gemspec
 ```
 
-adapter fixture は単なる test double ではありません。保存した実形式 JSON を official OpenAI / Anthropic SDK の model converter で復元し、RubyLLM は実 class (`Chunk`、`Message`、`ToolCall`、`Thinking`) を構築してから変換しています。最後に全 adapter 出力を本物の `UIMessage::V1::Stream` に投入して検証します。
+OpenAI and Anthropic fixtures are restored through their official SDK model converters. RubyLLM tests instantiate its real event classes. Every adapter's output is then passed through the real `UIMessage::V1::Stream`.
 
 ## Scope
 
-この gem は model 選択、conversation 保存、tool 実行、approval policy、retry、Rails の thread 管理を行いません。provider event を共通 Event に変換し、その Event を UI Message Stream Protocol v1 として安全に出力するところまでが責務です。
+This gem does not choose models, persist conversations, execute tools, define approval policies, retry requests, or manage Rails threads. Its responsibility ends after converting provider events into common events and safely emitting AI SDK UI Message Stream Protocol v1.
 
 ## License
 

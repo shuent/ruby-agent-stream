@@ -5,7 +5,7 @@ require "ai_stream/adapters/ruby_llm"
 
 # Fixture assertions intentionally keep the complete protocol sequence visible.
 # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
-class AIStreamRubyLLMAdapterTest < Minitest::Test
+class AgentStreamRubyLLMAdapterTest < Minitest::Test
   def test_real_chunk_and_message_models_are_converted_and_accepted_by_stream
     sdk_events = load_fixture
 

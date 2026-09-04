@@ -4,7 +4,7 @@ require "test_helper"
 
 # The schema coverage is intentionally exhaustive and narrative.
 # rubocop:disable-next Metrics/MethodLength, Metrics/AbcSize
-class AIStreamUIMessageV1EventTest < Minitest::Test
+class AgentStreamUIMessageV1EventTest < Minitest::Test
   Event = AgentStream::UIMessage::V1::Event
 
   def test_serializes_protocol_names_and_normalizes_json
