@@ -142,6 +142,96 @@ RailsからHTTP streamとしてdeltaを送り、Stimulus側で受け取ってtex
 
 これなら自然だ。
 
+Railsでは、例えばこう書ける。
+
+```ruby
+# config/routes.rb
+resource :chat_stream, only: :create
+
+# app/controllers/chat_streams_controller.rb
+class ChatStreamsController < ApplicationController
+  include ActionController::Live
+
+  def create
+    response.headers["Content-Type"] = "text/event-stream"
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+
+    RubyLLM.chat.ask(params.expect(:prompt)) do |chunk|
+      next if chunk.content.blank?
+
+      event = JSON.generate(delta: chunk.content)
+      response.stream.write("data: #{event}\n\n")
+    end
+
+    response.stream.write("data: [DONE]\n\n")
+  rescue ActionController::Live::ClientDisconnected, IOError
+    Rails.logger.info("chat stream disconnected")
+  ensure
+    response.stream.close
+  end
+end
+```
+
+ここでは一つのHTTP responseを閉じずに保ち、RubyLLMのchunkが来るたびにSSEの`data:` frameを書いている。
+
+画面側は普通のRails viewでよい。
+
+```erb
+<%= form_with url: chat_stream_path,
+      data: {
+        controller: "completion",
+        action: "submit->completion#submit"
+      } do |form| %>
+  <%= form.text_field :prompt %>
+  <%= form.submit "Send" %>
+
+  <p data-completion-target="output"></p>
+<% end %>
+```
+
+Stimulus controllerでは`fetch`のresponse bodyを少しずつ読む。
+
+```js
+// app/javascript/controllers/completion_controller.js
+import { Controller } from "@hotwired/stimulus"
+
+export default class extends Controller {
+  static targets = ["output"]
+
+  async submit(event) {
+    event.preventDefault()
+    this.outputTarget.textContent = ""
+
+    const response = await fetch(this.element.action, {
+      method: "POST",
+      body: new FormData(this.element),
+      headers: { Accept: "text/event-stream" },
+    })
+
+    for await (const event of readSSE(response.body)) {
+      if (event.data === "[DONE]") break
+
+      const { delta } = JSON.parse(event.data)
+      this.outputTarget.append(delta)
+    }
+  }
+}
+```
+
+`readSSE`は、HTTP chunkをdecodeし、途中で分かれたSSE frameをつなぐ処理を隠した説明用のhelperだ。ここで見たい本質は、`event.data`からdeltaを取り出し、受信するたびにtextへ追加していることだけである。
+
+ただ、applicationが自分で持つ責務も見えてくる。
+
+```text
+HTTP chunkをUTF-8としてdecodeする
+SSE frameの途中で分割されたbufferをつなぐ
+JSONをparseする
+deltaを蓄積する
+Stopでfetchをabortする
+errorと正常終了を分ける
+```
+
 ただしここから、
 
 ```js
@@ -231,39 +321,60 @@ Agent execution state
 
 例えばserver側でAgent eventを受け取るたびに、それに対応するHTMLを生成する。
 
-textなら、
+説明のため、Agentが次のようなeventを順番に返すとする。
 
 ```ruby
-broadcast_append_to(
-  conversation,
-  target: "message_text",
-  html: chunk.content
-)
+{ type: :text, content: "東京の天気を調べます。" }
+
+{
+  type: :tool_call,
+  id: "call-weather",
+  name: "lookup_weather",
+  input: { city: "Tokyo" }
+}
 ```
 
-tool callなら、
+Rails側はeventの`type`を見て、対応するTurbo Streamを送る。
 
 ```ruby
-broadcast_append_to(
-  conversation,
-  target: "message_parts",
-  partial: "tools/call",
-  locals: { tool_call: tool_call }
-)
+agent.run(prompt) do |event|
+  case event[:type]
+  when :text
+    Turbo::StreamsChannel.broadcast_append_to(
+      "agent",
+      target: "message_text",
+      html: ERB::Util.html_escape(event[:content])
+    )
+  when :tool_call
+    Turbo::StreamsChannel.broadcast_append_to(
+      "agent",
+      target: "message_parts",
+      partial: "tools/call",
+      locals: { tool_call: event }
+    )
+  end
+end
 ```
 
-tool resultなら、
+browserは`agent`というstreamを購読し、送られたHTMLを指定された場所へ追加する。
 
-```ruby
-broadcast_replace_to(
-  conversation,
-  target: dom_id(tool_call),
-  partial: "tools/result",
-  locals: { tool_call: tool_call }
-)
+```erb
+<%= turbo_stream_from "agent" %>
+
+<section id="message_parts">
+  <p id="message_text"></p>
+</section>
+
+<%# app/views/tools/_call.html.erb %>
+<article id="tool_call_<%= tool_call[:id] %>">
+  <strong><%= tool_call[:name] %></strong>
+  <span>実行中</span>
+</article>
 ```
 
-reasoningも別のpartialとしてrenderする。
+tool resultなら同じidの要素を`replace`し、reasoningなら別のpartialを`append`すればよい。
+
+ここではeventの保存場所やAgentを実行する場所を省いている。長時間の処理をActive Jobへ逃すかどうかは運用上の別の判断であり、`event → HTML → DOM`という仕組みそのものにJobは必須ではない。
 
 こうして、
 
@@ -586,41 +697,175 @@ RubyLLMのeventをadapterへ渡す
 
 # Rails ControllerもAgentの処理が見える
 
-概念的にはControllerはこの程度になる。
+説明のため、Controllerもdata flowだけに絞る。
 
 ```ruby
 class ChatsController < ApplicationController
-  include ActionController::Live
-
   def create
     stream = RubyLLM::Stream::AISDK.new(response.stream)
 
-    chat = RubyLLM.chat
-
-    chat.ask(prompt) do |chunk|
+    chat.ask(user_prompt) do |chunk|
       stream << chunk
     end
-
-    stream.finish
-  rescue ActionController::Live::ClientDisconnected, IOError
-    # useChat の stop() で接続が閉じられた
   ensure
     response.stream.close
   end
 end
 ```
 
-細かいHTTP header設定などは必要だが、本質的な処理は、
+header設定、requestのparse、tool result、finish、切断・error処理は省いている。ここで見たいのは、RubyLLMのchunkを受け取るたびに`stream << chunk`でadapterへ渡し、最後にHTTP streamを閉じる、という流れだけだ。
 
-```ruby
-chat.ask(prompt) do |chunk|
-  stream << chunk
-end
+---
+
+# HTTP上のdataがuseChatのstateになるまで
+
+ここからは、画面のbuttonを押してから`useChat`のstateが更新されるまでを、対応するコードとHTTP上のdataを並べて追う。
+
+最初の起点はReactの`run("complete")`である。
+
+```tsx
+// examples/react_client/src/App.tsx
+const {
+  messages,
+  status,
+  sendMessage,
+  stop,
+} = useChat({
+  transport: new DefaultChatTransport({ api: "/chat" }),
+})
+
+const run = (scenario) => {
+  void sendMessage(
+    { text: `Run the ${scenario} RubyLLM stream scenario.` },
+    { body: { scenario } },
+  )
+}
+
+<button onClick={() => run("complete")}>
+  Run every event
+</button>
 ```
 
-だ。
+buttonを押すと`sendMessage`がuser messageを`messages`へ加え、`DefaultChatTransport`が`POST /chat`を送る。第2引数の`body`に渡した`scenario`もrequest bodyへ加わる。
 
-何をやっているのかがそのまま読める。
+開発環境では、同一originの`/chat`をViteがRailsへproxyしている。
+
+```ts
+// examples/react_client/vite.config.ts
+proxy: {
+  "/chat": "http://127.0.0.1:3000",
+}
+```
+
+したがって、CDPで見えた次のrequestは突然発生したものではなく、`run("complete")`から呼ばれた`sendMessage`が作ったものだ。`id`、`messages`、`trigger`は`useChat`のtransportが組み立て、`scenario`だけがdemoから追加した値である。
+
+```http
+POST http://127.0.0.1:5173/chat
+Content-Type: application/json
+
+{
+  "scenario": "complete",
+  "id": "uGlAokEHyg5owNAC",
+  "messages": [
+    {
+      "id": "42JwlHtzGb3Ea2Mk",
+      "role": "user",
+      "parts": [
+        { "type": "text", "text": "Run the complete RubyLLM stream scenario." }
+      ]
+    }
+  ],
+  "trigger": "submit-message"
+}
+```
+
+Railsのresponseは通常のJSON responseではない。一つのHTTP responseを`chunked`のまま保ち、SSE frameを順番に書く。
+
+```http
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+transfer-encoding: chunked
+x-vercel-ai-ui-message-stream: v1
+x-accel-buffering: no
+```
+
+このrequestでは、bodyに **42個のJSON frame + `[DONE]`** が流れた。抜粋すると次のようになる。
+
+```text
+data: {"type":"start","messageId":"rails-demo-assistant-42JwlHtzGb3Ea2Mk","messageMetadata":{"traceId":"rails-fixed-001","phase":"started"}}
+
+data: {"type":"start-step"}
+
+data: {"type":"reasoning-start","id":"reasoning-demo-part-1"}
+
+data: {"type":"reasoning-delta","id":"reasoning-demo-part-1","delta":"Check the request and available tools. "}
+
+data: {"type":"text-start","id":"text-demo-part-2"}
+
+data: {"type":"text-delta","id":"text-demo-part-2","delta":"The RubyLLM chunks are now streaming."}
+
+data: {"type":"tool-input-start","toolCallId":"call-weather","toolName":"lookup_weather"}
+
+data: {"type":"tool-input-delta","toolCallId":"call-weather","inputTextDelta":"{\"city\":\""}
+
+data: {"type":"tool-input-delta","toolCallId":"call-weather","inputTextDelta":"Tokyo\",\"units\":\"celsius\"}"}
+
+data: {"type":"tool-input-available","toolCallId":"call-weather","toolName":"lookup_weather","input":{"city":"Tokyo","units":"celsius"}}
+
+data: {"type":"tool-approval-request","approvalId":"approval-weather","toolCallId":"call-weather"}
+
+data: {"type":"tool-output-available","toolCallId":"call-weather","output":{"city":"Tokyo","celsius":27,"condition":"sunny"}}
+
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"elapsedMs":42}}
+
+data: [DONE]
+```
+
+ここで大事なのは、42 frameが42個の画面要素になるわけではないことだ。`useChat`はidとevent typeを使い、streamを一つのmessage stateへ畳み込む。
+
+| wire上のevent | useChatで起きること |
+| --- | --- |
+| `reasoning-delta`が2回 | 一つの`reasoning` partへ追記し、endで`state: done` |
+| `text-delta`が2回 | 一つの`text` partへ追記し、endで`state: done` |
+| `tool-input-delta`が2回 | JSON文字列を連結し、`tool-input-available`でobject化 |
+| `tool-output-available` | 同じtool partを`state: output-available`へ更新 |
+| 同じidの`data-progress`が50、100 | 一つのpartにまとまり、最終値は100 |
+| `transient: true`の`data-notice` | messageには保存せず`onData` callbackだけを呼ぶ |
+| `reset-step`より前のtext | retry前のstepとして最終messageから取り除く |
+
+最終的なassistant messageは、例えば次のようになる。
+
+```json
+{
+  "id": "rails-demo-assistant-42JwlHtzGb3Ea2Mk",
+  "metadata": {
+    "traceId": "rails-fixed-001",
+    "phase": "complete",
+    "elapsedMs": 42
+  },
+  "parts": [
+    { "type": "step-start" },
+    { "type": "reasoning", "state": "done" },
+    { "type": "text", "state": "done" },
+    { "type": "tool-lookup_weather", "state": "output-available" },
+    { "type": "data-progress", "data": { "value": 100, "label": "done" } }
+  ]
+}
+```
+
+terminal eventも、見た目が似ていて意味は異なる。
+
+| 起点 | wire / network | useChatの最終state | partial text |
+| --- | --- | --- | --- |
+| 正常終了 | `finish` → `[DONE]` | `ready`、`finishReason: stop` | 完成したtextを保持 |
+| server error | `error` → `[DONE]` | `error`、`isError: true` | `A partial answer survives.`を保持 |
+| server abort | `abort` → `[DONE]` | `ready`、このversionでは`isAbort: false` | serverが送ったtextを保持 |
+| clientのStop | browserがrequestをcancel | `ready`、`isAbort: true` | 受信済み6 tokenを保持 |
+
+clientのStopでは、CDP上のrequestは開始から約0.89秒で`net::ERR_ABORTED`になった。Rails側ではsocket切断を受けて`AI SDK client disconnected`となり、約1.2秒で処理を終えた。100 tokenを生成するslow runは、`token-0`から`token-5`までを画面に残して中断された。
+
+つまりStopは「serverからabort eventを受信した」ことではない。browserの`AbortController`がHTTP request自体を閉じ、その結果がRailsの`ClientDisconnected`まで逆向きに伝播する。
 
 ---
 
@@ -657,9 +902,7 @@ error state
 
 を書く必要はない。
 
-実際にこのadapterからRails経由でSSEを流し、本物の`useChat`へ読ませる検証も行った。
-
-reasoning、text、tool、source、fileなどがmessage partとして組み立てられ、errorではpartial textを残したまま`status: error`になった。clientの`Stop`でもrequestがabortされ、Rails側の処理が途中で終了することを確認できた。
+上のwire dataに含まれるreasoning、text、tool、source、fileなどを、`useChat`がmessage partへ組み立てる。application codeが書くのは、その最終stateをどう見せるかだけになる。
 
 ---
 
