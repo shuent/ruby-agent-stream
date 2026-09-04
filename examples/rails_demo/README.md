@@ -3,19 +3,12 @@
 Rails 8.1 の `ActionController::Live` で、modelが返すplain event objectをUI Message eventへ変換して流すdemoです。Controllerには取得、変換、投入の全体像がそのまま現れます。
 
 ```ruby
-provider_events = get_from_model
-ui_events = Enumerator.new do |events|
-  provider_events.each do |provider_event|
-    events << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
-  end
-end
-
-ui_events.each do |event|
-  ui_stream << event
+DemoModel.new.stream(scenario: params.fetch(:scenario, "complete")).each do |provider_event|
+  ui_stream << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
 end
 ```
 
-`DemoModel` は `Data.define(:type, :payload)` で作ったhardcoded eventを `Enumerator` からyieldするだけで、AIStreamを知りません。実applicationでは `get_from_model` をprovider SDKやagentのevent streamに、変換部分をprovider固有のmappingまたは組み込みadapterに置き換えます。
+`DemoModel` は `Data.define(:type, :payload)` で作ったhardcoded eventを `Enumerator` からyieldするだけで、AIStreamを知りません。実applicationでは `DemoModel#stream` をprovider SDKやagentのevent streamに、変換部分をprovider固有のmappingまたは組み込みadapterに置き換えます。
 
 ```bash
 bundle install

@@ -9,7 +9,9 @@ class DemoModelTest < ActiveSupport::TestCase
     refute_kind_of AIStream::UIMessage::V1::Event, events.first
 
     ui_stream = AIStream::UIMessage::V1::Stream.new
-    convert(events).each { |event| ui_stream << event }
+    events.each do |provider_event|
+      ui_stream << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+    end
     types = decoded_chunks(ui_stream).filter_map { |chunk| chunk["type"] }
 
     assert_includes types, "reasoning-delta"
@@ -23,7 +25,9 @@ class DemoModelTest < ActiveSupport::TestCase
     provider_events = DemoModel.new(sleeper: ->(_) {}).stream(scenario: "error")
     ui_stream = AIStream::UIMessage::V1::Stream.new
 
-    convert(provider_events).each { |event| ui_stream << event }
+    provider_events.each do |provider_event|
+      ui_stream << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
+    end
     error = decoded_chunks(ui_stream).find { |chunk| chunk["type"] == "error" }
 
     assert_equal "Synthetic provider failure", error["errorText"]
@@ -31,14 +35,6 @@ class DemoModelTest < ActiveSupport::TestCase
   end
 
   private
-
-  def convert(provider_events)
-    Enumerator.new do |events|
-      provider_events.each do |provider_event|
-        events << AIStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
-      end
-    end
-  end
 
   def decoded_chunks(ui_stream)
     ui_stream.frames.filter_map do |frame|
