@@ -1,6 +1,18 @@
 require "test_helper"
 
 class ChatsControllerTest < ActionDispatch::IntegrationTest
+  test "converts provider events and streams UI protocol frames" do
+    post "/chat", params: { scenario: "complete" }, as: :json
+
+    assert_response :success
+    assert_equal "text/event-stream", response.headers["content-type"]
+    assert_equal "v1", response.headers["x-vercel-ai-ui-message-stream"]
+    assert_includes response.body, '"type":"reasoning-delta"'
+    assert_includes response.body, '"type":"tool-input-available"'
+    assert_includes response.body, '"type":"text-delta"'
+    assert response.body.end_with?("data: [DONE]\n\n")
+  end
+
   test "preflight permits a local React client" do
     process :options, "/chat", headers: { "Origin" => "http://127.0.0.1:5173" }
 
@@ -15,5 +27,4 @@ class ChatsControllerTest < ActionDispatch::IntegrationTest
     assert_response :no_content
     assert_nil response.headers["Access-Control-Allow-Origin"]
   end
-
 end

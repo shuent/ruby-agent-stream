@@ -77,22 +77,4 @@ describe("useChat protocol client", () => {
     expect(screen.getByTestId("event-log")).toHaveTextContent("error:Synthetic provider failure");
   });
 
-  it("consumes a server abort without treating it as a client stop", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => sse([
-      { type: "start", messageId: "assistant-abort" },
-      { type: "start-step" },
-      { type: "text-start", id: "text-abort" },
-      { type: "text-delta", id: "text-abort", delta: "The server stopped this run." },
-      { type: "text-end", id: "text-abort" },
-      { type: "finish-step" },
-      { type: "abort", reason: "Synthetic agent abort" },
-    ])));
-
-    render(<App />);
-    await userEvent.click(screen.getByTestId("run-abort"));
-
-    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("ready"));
-    expect(screen.getByText("The server stopped this run.")).toBeInTheDocument();
-    expect(screen.getByTestId("event-log")).toHaveTextContent("finish:none:abort=false:error=false");
-  });
 });

@@ -16,7 +16,7 @@ OpenAI / Anthropic / RubyLLM の event
 
 ## 設計
 
-書き込み interface は `ui_stream << event` だけです。`write(event)` の alias や、provider event を Stream が直接判定する分岐はありません。
+書き込み interface は `ui_stream << event` だけです。
 
 役割は次のように分離しています。
 
@@ -148,18 +148,23 @@ class ChatsController < ApplicationController
     ui_stream = AIStream::UIMessage::V1::Stream.new(response.stream)
     ui_stream.headers.each { |name, value| response.headers[name] = value }
 
-    sdk_stream = OpenAI::Client.new.responses.stream(
-      model: ENV.fetch("OPENAI_MODEL"),
-      input: params.require(:prompt)
-    )
-
-    AIStream::Adapters::OpenAI.new(sdk_stream).each do |event|
+    provider_events = get_from_model
+    AIStream::Adapters::OpenAI.new(provider_events).each do |event|
       ui_stream << event
     end
   rescue ActionController::Live::ClientDisconnected, IOError
     Rails.logger.info("UI message client disconnected")
   ensure
     response.stream.close
+  end
+
+  private
+
+  def get_from_model
+    OpenAI::Client.new.responses.stream(
+      model: ENV.fetch("OPENAI_MODEL"),
+      input: params.require(:prompt)
+    )
   end
 end
 ```
@@ -198,7 +203,7 @@ adapter の出力も `ui_stream << event` を通るため、Event の schema と
 - `examples/openai.rb`: official OpenAI Responses stream
 - `examples/anthropic.rb`: official Anthropic Messages stream
 - `examples/ruby_llm.rb`: RubyLLM callback を Enumerator に接続
-- `examples/rails_demo`: API key 不要の deterministic Rails SSE server
+- `examples/rails_demo`: OpenAI SDK event → adapter → Rails SSE の流れをControllerに示す、API key不要のdemo
 - `examples/react_client`: `@ai-sdk/react` の `useChat` で Rails demo を消費
 
 Rails と React の end-to-end demo:

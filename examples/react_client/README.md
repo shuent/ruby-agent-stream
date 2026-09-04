@@ -13,6 +13,6 @@ npm run build
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173` and use the complete, server-abort, error, and slow/cancel
+Open `http://127.0.0.1:5173` and use the complete, error, and slow/cancel
 controls. The page exposes stable `data-testid` hooks for browser automation and
 shows both accumulated `UIMessage` parts and hook callbacks.

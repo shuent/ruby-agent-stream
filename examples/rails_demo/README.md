@@ -1,6 +1,22 @@
-# Provider-neutral Rails streaming server
+# OpenAI adapter + Rails streaming server
 
-Rails 8.1 の `ActionController::Live` から `AIStream::UIMessage::V1::Stream` を直接使う demo です。API key は不要で、`DemoConversation` が deterministic な `Event` を作り、書き込みはすべて `ui_stream << event` を通ります。
+Rails 8.1 の `ActionController::Live` で、provider SDK event をadapter経由で `AIStream::UIMessage::V1::Stream` へ流すdemoです。Controllerには変換の全体像がそのまま現れます。
+
+```ruby
+provider_events = get_from_model
+AIStream::Adapters::OpenAI.new(provider_events).each do |event|
+  ui_stream << event
+end
+```
+
+API keyなしで動かせるよう、`DemoModel` はrepositoryのfixtureを実際のopenai-ruby event modelへdecodeして返します。実applicationでは `get_from_model` を次のようなSDK呼び出しに置き換えます。
+
+```ruby
+OpenAI::Client.new.responses.stream(
+  model: ENV.fetch("OPENAI_MODEL"),
+  input: params.require(:message)
+)
+```
 
 ```bash
 bundle install
@@ -17,6 +33,6 @@ curl -N -X POST \
   http://127.0.0.1:3000/chat
 ```
 
-scenario は `complete`、`abort`、`error`、`slow` です。`../react_client` は `/chat` を port 3000 に proxy し、AI SDK の `useChat` で同じ response を消費します。
+scenario は `complete`、`error`、`slow` です。`../react_client` は `/chat` を port 3000 に proxy し、AI SDK の `useChat` で同じ response を消費します。
 
-実 application では `DemoConversation` を `AIStream::Adapters::OpenAI`、`Anthropic`、`RubyLLM` のいずれかに置き換えます。controller は headers を最初の event より前に設定し、`ensure` で `response.stream` を close します。
+AnthropicやRubyLLMを使う場合も、`get_from_model` とadapter classだけを交換します。Controllerはheadersを最初のeventより前に設定し、`ensure` で `response.stream` をcloseします。

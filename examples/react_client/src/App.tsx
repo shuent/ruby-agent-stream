@@ -6,7 +6,7 @@ import {
   type UIMessagePart,
 } from "ai";
 
-type Scenario = "complete" | "abort" | "error" | "slow";
+type Scenario = "complete" | "error" | "slow";
 
 function json(value: unknown) {
   return JSON.stringify(value, null, 2);
@@ -81,7 +81,7 @@ export function App() {
     <main>
       <header className="hero">
         <p className="eyebrow">protocol verification client</p>
-        <h1>Ruby AI events <span>→</span> AI SDK useChat</h1>
+        <h1>OpenAI events <span>→</span> Ruby adapter <span>→</span> AI SDK useChat</h1>
         <p>
           Rails emits real SSE frames. This React island delegates parsing,
           accumulation, tool state and cancellation to <code>useChat</code>.
@@ -90,13 +90,10 @@ export function App() {
 
       <section className="controls" aria-label="Stream scenarios">
         <button data-testid="run-complete" disabled={busy} onClick={() => run("complete")}>
-          Run every event
+          Run provider stream
         </button>
         <button data-testid="run-error" disabled={busy} onClick={() => run("error")}>
           Run error path
-        </button>
-        <button data-testid="run-abort" disabled={busy} onClick={() => run("abort")}>
-          Run server abort
         </button>
         <button data-testid="run-slow" disabled={busy} onClick={() => run("slow")}>
           Run slow stream

@@ -1,3 +1,5 @@
+require "ai_stream/adapters/openai"
+
 class ChatsController < ApplicationController
   include ActionController::Live
 
@@ -8,7 +10,10 @@ class ChatsController < ApplicationController
     ui_stream = AIStream::UIMessage::V1::Stream.new(response.stream)
     ui_stream.headers.each { |name, value| response.headers[name] = value }
 
-    DemoConversation.new(ui_stream).run(scenario: params.fetch(:scenario, "complete"))
+    provider_events = get_from_model
+    AIStream::Adapters::OpenAI.new(provider_events).each do |event|
+      ui_stream << event
+    end
   rescue ActionController::Live::ClientDisconnected, IOError
     Rails.logger.info("UI message client disconnected")
   rescue StandardError => error
@@ -22,6 +27,10 @@ class ChatsController < ApplicationController
   end
 
   private
+
+  def get_from_model
+    DemoModel.new.responses_stream(scenario: params.fetch(:scenario, "complete"))
+  end
 
   def allow_local_client
     origin = request.headers["Origin"]
