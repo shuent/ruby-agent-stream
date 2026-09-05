@@ -7,19 +7,14 @@ Rails 8.1 / SQLite のデモ在庫管理と、React / AI SDK `useChat` のAIア�
 リポジトリルートから:
 
 ```bash
-cd examples/rails_demo
-bundle install
-bin/rails db:prepare
-bin/rails server -b 127.0.0.1 -p 3000
+bin/dev
 ```
 
-別ターミナル:
+Ruby（`.ruby-version`に記載）とNode.js / npmが必要です。Rails側の`bin/dev`が起動処理を所有し、ルートの`bin/dev`はそこへ委譲します。`cd examples/rails_demo`後の`bin/dev`でも同じ動作です。Foreman等の追加ツールは不要です。
 
-```bash
-cd examples/react_client
-npm install
-npm run dev -- --host 127.0.0.1
-```
+初回は不足しているGemとnpm依存をインストールし、`db:prepare`でDBを準備してRails（3000）とVite（5173）を起動します。既存DBはリセットしません。Ctrl-Cで両方停止し、片方が終了した場合ももう片方を停止します。ポートが使用中なら起動前にエラーを表示します。依存のlockfileを更新した場合は、それぞれのディレクトリで`bundle install` / `npm ci`を実行してください。
+
+Railsだけを起動する場合は従来どおり`bin/rails server -b 127.0.0.1 -p 3000`、Reactだけなら`examples/react_client`で`npm run dev`です。
 
 ブラウザで `http://127.0.0.1:5173/` を開きます。既存DBを既知の4商品へ戻す場合は画面の「デモデータをリセット」を確認して実行します。会話・承認の監査履歴は残り、古い保留承認とキャッシュは無効になります。
 
@@ -33,7 +28,7 @@ npm run dev -- --host 127.0.0.1
 
 ```bash
 # examples/rails_demo
-bin/rails test test/controllers/chats_controller_test.rb test/controllers/saas_flow_test.rb test/models/inventory_catalog_test.rb test/models/agent_chat_test.rb
+bin/rails test test/controllers/chats_controller_test.rb test/controllers/saas_flow_test.rb test/models/inventory_catalog_test.rb test/models/agent_chat_test.rb test/models/agent_runners_test.rb
 # 非課金のプロセス間cache確認（順に1回ずつ）
 bin/rails runner script/verify_cache_persistence.rb write
 bin/rails runner script/verify_cache_persistence.rb read
@@ -42,6 +37,6 @@ npm test
 npm run build
 ```
 
-`script/verify_agent.rb openai` / `ruby_llm` は課金を伴う少数ターンの検証です。今回の実行状況、未達、非課金ブラウザfixtureの証拠は [app-report](../../docs/agent-demo/app-report.md) を参照してください。
+`script/verify_agent.rb openai` / `ruby_llm` は課金を伴う少数ターンの検証です。2026-09-05に両SDKの実APIで調査・追質問・承認登録を確認済みです。今回の修正・取得結果は [app-report](../../docs/agent-demo/app-report.md) を参照してください。
 
 これは認証・課金を備えた製品ではなくローカルデモです。ダッシュボードとresetは共有デモデータを対象にします。

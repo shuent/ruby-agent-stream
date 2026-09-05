@@ -16,6 +16,11 @@ OpenAI / Anthropic / RubyLLM の event
  UI Message Stream Protocol v1 SSE
 ```
 
+## demo rails ai agent saas app gif
+
+![](images/rails-real-agent/live-agent-flow.gif)
+
+
 ## 設計
 
 書き込み interface は `ui_stream << event` だけです。
@@ -248,16 +253,11 @@ adapter の出力も `ui_stream << event` を通るため、Event の schema と
 Rails と React の end-to-end demo:
 
 ```bash
-cd examples/rails_demo
-bundle install
-bin/rails test
-bin/rails server -b 127.0.0.1 -p 3000
-
-cd ../react_client
-npm install
-npm test
-npm run dev
+# リポジトリルートから
+bin/dev
 ```
+
+http://127.0.0.1:5173/ を開きます。DB準備とRails・Viteの起動をまとめて行い、Ctrl-Cで両方停止します。`examples/rails_demo` 内の `bin/dev` からも起動できます。API設定と検証方法は[サンプルのREADME](examples/rails_demo/README.md)を参照してください。
 
 ## Tests
 

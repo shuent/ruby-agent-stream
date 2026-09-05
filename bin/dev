@@ -1,0 +1,3 @@
+#!/usr/bin/env ruby
+require "rbconfig"
+exec RbConfig.ruby, File.expand_path("../examples/rails_demo/bin/dev", __dir__), *ARGV

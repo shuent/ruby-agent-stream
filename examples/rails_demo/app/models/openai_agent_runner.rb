@@ -33,7 +33,8 @@ class OpenaiAgentRunner
           next
         end
         tool = @tools.fetch(call.name.to_s)
-        raw_output = tool.call(JSON.parse(call.arguments))
+        raw_output = tool.call(**JSON.parse(call.arguments).symbolize_keys)
+        raw_output = JSON.generate(raw_output) unless raw_output.is_a?(String)
         yield event(:tool_output_available, tool_call_id: call.call_id, output: JSON.parse(raw_output))
         { type: :function_call_output, call_id: call.call_id, output: raw_output }
       end

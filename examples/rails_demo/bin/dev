@@ -1,2 +1,67 @@
 #!/usr/bin/env ruby
-exec "./bin/rails", "server", *ARGV
+# Rails owns the example lifecycle; the repository's bin/dev delegates here.
+require "rbconfig"
+require "socket"
+
+rails_dir = File.expand_path("..", __dir__)
+react_dir = File.expand_path("../react_client", rails_dir)
+abort "Usage: bin/dev (Rails :3000, React :5173)" unless ARGV.empty?
+
+# Fail before migrations or starting either child when an existing server owns a port.
+[3000, 5173].each do |port|
+  begin
+    TCPServer.new("127.0.0.1", port).close
+  rescue Errno::EADDRINUSE
+    abort "Port #{port} is already in use. Stop the existing example server first."
+  end
+end
+
+Dir.chdir(rails_dir) do
+  unless system("bundle", "check", out: File::NULL)
+    abort "bundle install failed" unless system("bundle", "install")
+  end
+  # db:prepare migrates/seeds only as needed; it does not reset an existing demo.
+  abort "db:prepare failed" unless system(RbConfig.ruby, "bin/rails", "db:prepare")
+end
+unless File.file?(File.join(react_dir, "node_modules/.package-lock.json"))
+  abort "npm ci failed" unless system("npm", "ci", chdir: react_dir)
+end
+
+children = []
+exit_code = 0
+%w[INT TERM].each { |signal| Signal.trap(signal) { raise Interrupt } }
+begin
+  children << Process.spawn(RbConfig.ruby, "bin/rails", "server", "-b", "127.0.0.1", "-p", "3000", chdir: rails_dir, pgroup: true)
+  # Vite can reconnect an already-open browser immediately. Wait for Rails first.
+  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 30
+  loop do
+    abort "Rails exited before it was ready." if Process.waitpid(children.first, Process::WNOHANG)
+    begin
+      TCPSocket.new("127.0.0.1", 3000).close
+      break
+    rescue Errno::ECONNREFUSED
+      abort "Rails did not start within 30 seconds." if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+      sleep 0.1
+    end
+  end
+  children << Process.spawn("npm", "run", "dev", chdir: react_dir, pgroup: true)
+  puts "Stockroom AI: http://127.0.0.1:5173/ — Ctrl-C stops Rails and Vite."
+  $stdout.flush
+  _, status = Process.wait2
+  exit_code = status.exitstatus || 1
+rescue Interrupt
+  exit_code = 0
+ensure
+  %w[INT TERM].each { |signal| Signal.trap(signal, "IGNORE") }
+  children.each do |pid|
+    Process.kill("TERM", -pid)
+  rescue Errno::ESRCH
+    nil
+  end
+  children.each do |pid|
+    Process.wait(pid)
+  rescue Errno::ECHILD
+    nil
+  end
+end
+exit exit_code

@@ -16,7 +16,8 @@ class RubyLlmAgentRunner
 
     provider_events = Enumerator.new do |events|
       steps = 0
-      chat.before_message do
+      # before_message also fires for each tool result. Bound actual requests.
+      chat.before_request do |_payload|
         steps += 1
         raise "agent exceeded step limit" if steps > AgentChat::MAX_STEPS
       end

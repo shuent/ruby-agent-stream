@@ -18,6 +18,10 @@ OpenAI / Anthropic / RubyLLM events
               useChat
 ```
 
+## demo rails ai agent saas app gif
+
+![](images/rails-real-agent/live-agent-flow.gif)
+
 ## Design
 
 The only write interface is `ui_stream << event`.
@@ -239,16 +243,11 @@ Adapter output still passes through `ui_stream << event`, so it cannot bypass ev
 Run the Rails and React end-to-end demo:
 
 ```bash
-cd examples/rails_demo
-bundle install
-bin/rails test
-bin/rails server -b 127.0.0.1 -p 3000
-
-cd ../react_client
-npm install
-npm test
-npm run dev
+# From the repository root
+bin/dev
 ```
+
+Open http://127.0.0.1:5173/. This prepares the demo database and starts Rails and Vite; Ctrl-C stops both. You can also run `bin/dev` from `examples/rails_demo`. See [the example README](examples/rails_demo/README.md) for API setup and verification.
 
 ## Tests
 
