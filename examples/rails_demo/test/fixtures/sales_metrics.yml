@@ -1,0 +1,11 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  inventory_item: one
+  period_days: 30
+  units_sold: 42
+
+two:
+  inventory_item: two
+  period_days: 30
+  units_sold: 63

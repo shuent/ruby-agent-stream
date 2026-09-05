@@ -71,6 +71,33 @@ Pass a sink implementing `#write(String)`, such as `response.stream`, to write f
 
 Invalid fields and JSON values raise `Event::SchemaError` or `Event::JSONCompatibilityError`. Invalid ordering raises `Stream::ProtocolError`. RBS declares the same public event surface with overloads.
 
+### Approval across HTTP requests
+
+After `tool-input-available` and `tool-approval-request`, close the step and finish
+the HTTP stream. AI SDK's `addToolApprovalResponse` updates the existing tool
+part; configure `sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses`
+to submit that decision in a new request. On the server, restore protocol state
+from the saved `Event` history without replaying its SSE frames:
+
+```ruby
+ui_stream = AgentStream::UIMessage::V1::Stream.new(response.stream, continuation: saved_events)
+ui_stream << Event.new(:start, message_id: original_assistant_id)
+ui_stream << Event.new(:start_step)
+ui_stream << Event.new(:tool_approval_response, approval_id: approval_id, approved: true)
+ui_stream << Event.new(:tool_output_available, tool_call_id: original_tool_call_id, output: result)
+ui_stream << Event.new(:finish_step)
+ui_stream << Event.new(:finish)
+```
+
+For rejection, send `approved: false` followed by `tool_output_denied`.
+`continuation:` accepts an enumerable of validated `Event` objects from one or
+more completed HTTP segments of the same assistant message, each ending with
+`finish`. Incomplete, aborted, and failed histories are rejected. The caller
+must use the original assistant ID and trusted server history. This restores
+protocol validation only: the application owns approval persistence, identity
+and argument binding, authorization, stale decisions, and exactly-once tool
+execution. Never execute tools by replaying event history.
+
 ## Provider adapters
 
 ### OpenAI
@@ -89,6 +116,28 @@ AgentStream::Adapters::OpenAI.new(sdk_stream).each { |event| ui_stream << event 
 ```
 
 The adapter consumes the official [`openai-ruby`](https://github.com/openai/openai-ruby) Responses stream and maps text, refusal, reasoning, function-call input, usage, completion, and failure events. Unknown future `response.*` events are ignored for forward compatibility; unrelated values raise `UnsupportedEventError`.
+
+For an app-owned, multi-step tool loop, use `lifecycle: :content`. The adapter then emits provider content and `message-metadata`, while the app owns the message and step boundaries. After enumeration, `response` exposes the completed SDK response and `finish_reason` is `:tool_calls`, `:stop`, or the mapped incomplete reason.
+
+```ruby
+ui_stream << AgentStream::UIMessage::V1::Event.new(:start, message_id: message_id)
+
+loop do
+  ui_stream << AgentStream::UIMessage::V1::Event.new(:start_step)
+  adapter = AgentStream::Adapters::OpenAI.new(sdk_stream, lifecycle: :content)
+  adapter.each { |event| ui_stream << event }
+
+  # Execute every available tool in the application, emit its output here,
+  # then create the next Responses stream with previous_response_id and
+  # function_call_output input items.
+  ui_stream << AgentStream::UIMessage::V1::Event.new(:finish_step)
+  break unless adapter.finish_reason == :tool_calls
+end
+
+ui_stream << AgentStream::UIMessage::V1::Event.new(:finish, finish_reason: adapter.finish_reason)
+```
+
+`lifecycle: :step` omits only the message-level `start` and `finish`; the default `:message` remains the complete one-response envelope. With `:content`, emit tool outputs before the app's `finish-step`. The Responses API does not carry prior instructions forward when `previous_response_id` is used, so send the instructions again on every provider call.
 
 ### Anthropic
 
@@ -122,7 +171,7 @@ ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
 AgentStream::Adapters::RubyLLM.new(sdk_events).each { |event| ui_stream << event }
 ```
 
-The RubyLLM adapter handles text, thinking, URL attachments, streamed or structured tool calls, and tool-result `RubyLLM::Message` objects. To include tool results from an agent loop, add messages for which `message.tool_result?` is true to the same enumerator from an `after_message` callback.
+The RubyLLM adapter handles text, thinking, URL attachments, streamed or structured tool calls, and tool-result `RubyLLM::Message` objects. To include tool results from an agent loop, add messages for which `message.tool_result?` is true to the same enumerator from an `after_message` callback. The adapter starts a new UI step on the first chunk after one or more tool-result messages, permits RubyLLM to reuse its per-completion stream keys, and reports usage summed across the automatic tool loop.
 
 ## Rails and `useChat`
 

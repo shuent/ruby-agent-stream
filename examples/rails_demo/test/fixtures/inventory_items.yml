@@ -1,0 +1,17 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  sku: MUG-RED
+  name: 波佐見焼マグ 赤
+  category: 食器
+  stock_on_hand: 18
+  stock_reserved: 6
+  reorder_point: 16
+
+two:
+  sku: TEA-GRN
+  name: 知覧茶ティーバッグ
+  category: 食品
+  stock_on_hand: 14
+  stock_reserved: 5
+  reorder_point: 18

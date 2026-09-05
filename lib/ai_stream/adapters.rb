@@ -12,9 +12,16 @@ module AgentStream
     # Shared protocol lifecycle and content-part bookkeeping for adapters.
     # Provider-specific event interpretation remains in each adapter.
     class Emitter
-      def initialize(message_id:, consumer:)
+      LIFECYCLES = %i[message step content].freeze
+
+      def initialize(message_id:, consumer:, lifecycle: :message)
+        unless LIFECYCLES.include?(lifecycle)
+          raise ArgumentError, "lifecycle must be one of #{LIFECYCLES.map(&:inspect).join(", ")}"
+        end
+
         @message_id = message_id
         @consumer = consumer
+        @lifecycle = lifecycle
         @started = false
         @finished = false
         @parts = {}
@@ -27,11 +34,8 @@ module AgentStream
       def start(message_id = nil, message_metadata: nil)
         return if started?
 
-        attributes = {}
-        attributes[:message_id] = message_id || @message_id if message_id || @message_id
-        attributes[:message_metadata] = message_metadata if message_metadata
-        consume(:start, **attributes)
-        consume(:start_step)
+        start_message(message_id, message_metadata) if message_lifecycle?
+        consume(:start_step) if step_lifecycle?
         @started = true
       end
 
@@ -70,16 +74,23 @@ module AgentStream
         @parts.each_key { |kind, id| end_part(kind, id) }
       end
 
+      def next_step
+        start
+        close_parts
+        return unless step_lifecycle?
+
+        consume(:finish_step)
+        consume(:start_step)
+      end
+
       def finish(finish_reason: nil, message_metadata: nil)
         return if finished?
 
         start
         close_parts
-        consume(:finish_step)
-        attributes = {}
-        attributes[:finish_reason] = finish_reason if finish_reason
-        attributes[:message_metadata] = message_metadata if message_metadata
-        consume(:finish, **attributes)
+        consume(:message_metadata, message_metadata: message_metadata) if content_metadata?(message_metadata)
+        consume(:finish_step) if step_lifecycle?
+        finish_message(finish_reason, message_metadata) if message_lifecycle?
         @finished = true
       end
 
@@ -94,6 +105,24 @@ module AgentStream
       end
 
       private
+
+      def message_lifecycle? = @lifecycle == :message
+      def step_lifecycle? = @lifecycle != :content
+      def content_metadata?(message_metadata) = !message_lifecycle? && message_metadata
+
+      def start_message(message_id, message_metadata)
+        attributes = {}
+        attributes[:message_id] = message_id || @message_id if message_id || @message_id
+        attributes[:message_metadata] = message_metadata if message_metadata
+        consume(:start, **attributes)
+      end
+
+      def finish_message(finish_reason, message_metadata)
+        attributes = {}
+        attributes[:finish_reason] = finish_reason if finish_reason
+        attributes[:message_metadata] = message_metadata if message_metadata
+        consume(:finish, **attributes)
+      end
 
       def consume(type, **attributes)
         @consumer.call(UIMessage::V1::Event.new(type, **attributes))

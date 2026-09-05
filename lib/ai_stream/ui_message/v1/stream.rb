@@ -30,7 +30,7 @@ module AgentStream
 
         def self.headers = HEADERS.dup
 
-        def initialize(sink = nil)
+        def initialize(sink = nil, continuation: nil)
           @sink = sink
           @frames = []
           @started = false
@@ -40,6 +40,7 @@ module AgentStream
           @parts = {}
           @tools = {}
           @approvals = {}
+          restore_continuation!(continuation) if continuation
         end
 
         def headers = self.class.headers
@@ -65,6 +66,23 @@ module AgentStream
         end
 
         private
+
+        # Rebuild protocol state from trusted, server-owned event history without
+        # replaying frames or executing tools. Each HTTP segment must finish.
+        def restore_continuation!(history)
+          last_type = nil
+          history.each do |event|
+            raise ArgumentError, "expected #{Event}, got #{event.class}" unless event.is_a?(Event)
+            raise ProtocolError, "cannot continue an aborted or failed stream" if %i[abort error].include?(event.type)
+
+            @started = false if last_type == :finish
+            transition!(event)
+            last_type = event.type
+          end
+          raise ProtocolError, "continuation history must end with finish" unless last_type == :finish
+
+          @started = false
+        end
 
         def transition!(event)
           case event.type

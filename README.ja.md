@@ -71,6 +71,30 @@ ui_stream.each { |frame| puts frame }
 
 不正な field や JSON 値は `Event::SchemaError` / `Event::JSONCompatibilityError`、不正な event 順序は `Stream::ProtocolError` になります。RBS も同じ public event surface を overload で定義しています。
 
+### 別 HTTP request で承認を継続する
+
+`tool-input-available` と `tool-approval-request` の後にstepとHTTP streamを終了します。
+AI SDKの `addToolApprovalResponse` は既存tool partを更新し、
+`sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses` を設定すると
+判断が新しいHTTP requestとして送信されます。server保存の `Event` 履歴から検証状態だけを復元できます。
+過去のSSE frameは再送しません。
+
+```ruby
+ui_stream = AgentStream::UIMessage::V1::Stream.new(response.stream, continuation: saved_events)
+ui_stream << Event.new(:start, message_id: original_assistant_id)
+ui_stream << Event.new(:start_step)
+ui_stream << Event.new(:tool_approval_response, approval_id: approval_id, approved: true)
+ui_stream << Event.new(:tool_output_available, tool_call_id: original_tool_call_id, output: result)
+ui_stream << Event.new(:finish_step)
+ui_stream << Event.new(:finish)
+```
+
+拒否時は `approved: false` と `tool_output_denied` を送ります。`continuation:` は同じassistant
+messageの1つ以上のHTTP区間を構成する `Event` 列を受け取り、各区間は `finish` で終了している必要があります。
+途中・abort・errorの履歴は拒否します。元のassistant IDと信頼できるserver履歴を渡すのはcallerの責務です。
+復元するのはprotocol検証状態だけです。承認の永続化、本人・確定引数との対応付け、認可、陳腐化判定、
+一度だけのtool実行はアプリ側で担い、event履歴のreplayからtoolを実行しないでください。
+
 ## OpenAI
 
 official [`openai-ruby`](https://github.com/openai/openai-ruby) の Responses stream をそのまま adapter に渡します。
@@ -92,6 +116,28 @@ end
 ```
 
 Responses API の text、refusal、reasoning、function call input、usage、完了／失敗 event を変換します。SDK が追加した未知の `response.*` event は forward compatibility のため無視し、provider と無関係な値は `UnsupportedEventError` にします。
+
+アプリが複数stepのtool loopを所有する場合は `lifecycle: :content` を使います。このモードではadapterはprovider contentと `message-metadata` だけを出し、message/step境界はアプリが出します。列挙後は `response` から完了したSDK responseを取得でき、`finish_reason` は `:tool_calls`、`:stop`、または変換済みのincomplete理由です。
+
+```ruby
+ui_stream << AgentStream::UIMessage::V1::Event.new(:start, message_id: message_id)
+
+loop do
+  ui_stream << AgentStream::UIMessage::V1::Event.new(:start_step)
+  adapter = AgentStream::Adapters::OpenAI.new(sdk_stream, lifecycle: :content)
+  adapter.each { |event| ui_stream << event }
+
+  # アプリで全toolを実行し、ここでtool outputを出す。
+  # 次のResponses streamにはprevious_response_idと
+  # function_call_output input itemを渡す。
+  ui_stream << AgentStream::UIMessage::V1::Event.new(:finish_step)
+  break unless adapter.finish_reason == :tool_calls
+end
+
+ui_stream << AgentStream::UIMessage::V1::Event.new(:finish, finish_reason: adapter.finish_reason)
+```
+
+`lifecycle: :step` はmessage全体の `start` / `finish` だけを省き、既定の `:message` は従来どおり1 response分の完全なenvelopeを出します。`:content` のtool outputはアプリの `finish-step` より前に出してください。Responses APIで `previous_response_id` を使っても前回のinstructionsは引き継がれないため、provider呼び出しごとに再送します。
 
 ## Anthropic
 
@@ -136,7 +182,7 @@ AgentStream::Adapters::RubyLLM.new(sdk_events).each do |event|
 end
 ```
 
-chunk の text、thinking、URL attachment、streamed/structured tool call と、tool-result `RubyLLM::Message` を扱います。agent loop の tool result も含める場合は `after_message` callback で `message.tool_result?` の message を同じ Enumerator に追加してください。
+chunk の text、thinking、URL attachment、streamed/structured tool call と、tool-result `RubyLLM::Message` を扱います。agent loop の tool result も含める場合は `after_message` callback で `message.tool_result?` の message を同じ Enumerator に追加してください。1件以上のtool-result message後の最初のchunkで新しいUI stepを始め、RubyLLMがprovider呼び出しごとにstream keyを再利用できるようにします。usageは自動tool loop内の各provider呼び出し分を合算します。
 
 ## Rails (`ActionController::Live`)
 

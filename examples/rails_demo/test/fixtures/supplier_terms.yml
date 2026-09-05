@@ -1,0 +1,17 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  inventory_item: one
+  supplier_name: 長崎クラフト商会
+  lead_time_days: 9
+  min_order_quantity: 24
+  unit_cost: 1280
+  pack_size: 6
+
+two:
+  inventory_item: two
+  supplier_name: 南九州茶業
+  lead_time_days: 12
+  min_order_quantity: 30
+  unit_cost: 760
+  pack_size: 10

@@ -14,15 +14,18 @@ module AgentStream
     class OpenAI
       include Enumerable
 
+      attr_reader :finish_reason, :response
+
       IGNORED_EVENT_PREFIXES = %w[
         response.audio. response.code_interpreter_call. response.file_search_call.
         response.image_generation_call. response.mcp_call. response.shell_call.
         response.web_search_call. response.in_progress response.output_text.annotation.
       ].freeze
 
-      def initialize(events, message_id: nil)
+      def initialize(events, message_id: nil, lifecycle: :message)
         @events = events
         @message_id = message_id
+        @lifecycle = lifecycle
       end
 
       def each(&consumer)
@@ -37,10 +40,11 @@ module AgentStream
       private
 
       def reset(consumer)
-        @emitter = Emitter.new(message_id: @message_id, consumer: consumer)
+        @emitter = Emitter.new(message_id: @message_id, consumer: consumer, lifecycle: @lifecycle)
         @tools = {}
         @part_kinds = {}
         @response = nil
+        @finish_reason = nil
         @saw_tool_call = false
       end
 
@@ -232,8 +236,8 @@ module AgentStream
 
       def finish(finish_reason: nil)
         flush_tools
-        reason = finish_reason || (@saw_tool_call ? :tool_calls : :stop)
-        @emitter.finish(finish_reason: reason, message_metadata: response_metadata)
+        @finish_reason = finish_reason || (@saw_tool_call ? :tool_calls : :stop)
+        @emitter.finish(finish_reason: @finish_reason, message_metadata: response_metadata)
       end
 
       def finish_error(message)

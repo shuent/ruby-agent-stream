@@ -8,6 +8,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/chat": "http://127.0.0.1:3000",
+      "/demo": "http://127.0.0.1:3000",
     },
   },
   preview: {
@@ -15,6 +16,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/chat": "http://127.0.0.1:3000",
+      "/demo": "http://127.0.0.1:3000",
     },
   },
   test: {

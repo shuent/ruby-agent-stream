@@ -1,0 +1,17 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  request_digest: digest-one
+  adapter: openai
+  provider_model: gpt-5.6-luna
+  normalized_prompt: one
+  event_log: "[]"
+  run_metadata: "{}"
+
+two:
+  request_digest: digest-two
+  adapter: ruby_llm
+  provider_model: gpt-5.6-luna
+  normalized_prompt: two
+  event_log: "[]"
+  run_metadata: "{}"

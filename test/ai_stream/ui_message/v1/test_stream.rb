@@ -121,7 +121,82 @@ class AgentStreamUIMessageV1StreamTest < Minitest::Test
     assert_equal @stream.frames, @stream.to_a
   end
 
+  def test_approval_continues_in_a_new_http_stream_without_replaying_history
+    history = approval_history
+    history.each { |event| @stream << event }
+    assert @stream.finished?
+
+    output = StringIO.new
+    resumed = Stream.new(output, continuation: history)
+    assert_empty output.string
+    refute resumed.started?
+    resumed << Event.new(:start, message_id: "message-1")
+    resumed << Event.new(:start_step)
+    assert_raises(Stream::ProtocolError) do
+      resumed << Event.new(:tool_output_available, tool_call_id: "tool-1", output: {})
+    end
+    resumed << Event.new(:tool_approval_response, approval_id: "approval-1", approved: true)
+    assert_raises(Stream::ProtocolError) do
+      resumed << Event.new(:tool_approval_response, approval_id: "approval-1", approved: true)
+    end
+    resumed << Event.new(:tool_output_available, tool_call_id: "tool-1", output: { saved: true })
+    resumed << Event.new(:finish_step)
+    resumed << Event.new(:finish)
+
+    assert resumed.finished?
+    refute_includes output.string, "tool-input-available"
+    refute_includes output.string, "tool-approval-request"
+    assert_includes output.string, "tool-output-available"
+    assert_equal 1, output.string.scan("[DONE]").length
+  end
+
+  def test_continuation_denial_and_multiple_finished_http_segments
+    response = [
+      Event.new(:start, message_id: "message-1"), Event.new(:start_step),
+      Event.new(:tool_approval_response, approval_id: "approval-1", approved: false),
+      Event.new(:tool_output_denied, tool_call_id: "tool-1"),
+      Event.new(:finish_step), Event.new(:finish)
+    ]
+    resumed = Stream.new(continuation: approval_history)
+    response.each { |event| resumed << event }
+    assert resumed.finished?
+
+    next_stream = Stream.new(continuation: approval_history + response)
+    next_stream << Event.new(:start, message_id: "message-1")
+    next_stream << Event.new(:start_step)
+    assert_raises(Stream::ProtocolError) do
+      next_stream << Event.new(:tool_output_available, tool_call_id: "tool-1", output: {})
+    end
+    assert_raises(Stream::ProtocolError) do
+      next_stream << Event.new(:tool_approval_response, approval_id: "approval-1", approved: true)
+    end
+  end
+
+  def test_continuation_requires_valid_finished_event_history
+    assert_raises(Stream::ProtocolError) { Stream.new(continuation: []) }
+    assert_raises(Stream::ProtocolError) { Stream.new(continuation: approval_history[0...-1]) }
+    assert_raises(ArgumentError) { Stream.new(continuation: [{}]) }
+    %i[error abort].each do |type|
+      attributes = type == :error ? { error_text: "failed" } : {}
+      history = [Event.new(:start), Event.new(type, **attributes)]
+      assert_raises(Stream::ProtocolError) { Stream.new(continuation: history) }
+    end
+    invalid = [Event.new(:start), Event.new(:start_step),
+               Event.new(:tool_approval_request, approval_id: "unknown", tool_call_id: "missing"),
+               Event.new(:finish_step), Event.new(:finish)]
+    assert_raises(Stream::ProtocolError) { Stream.new(continuation: invalid) }
+  end
+
   private
+
+  def approval_history
+    [
+      Event.new(:start, message_id: "message-1"), Event.new(:start_step),
+      Event.new(:tool_input_available, tool_call_id: "tool-1", tool_name: "publish", input: { id: 1 }),
+      Event.new(:tool_approval_request, approval_id: "approval-1", tool_call_id: "tool-1"),
+      Event.new(:finish_step), Event.new(:finish, finish_reason: :tool_calls)
+    ]
+  end
 
   def push(type, **attributes)
     @stream << Event.new(type, **attributes)

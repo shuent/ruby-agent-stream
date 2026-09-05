@@ -11,7 +11,10 @@ module AgentStream
     class OpenAI
       include Enumerable[UIMessage::V1::Event]
 
-      def initialize: (Enumerable[untyped] events, ?message_id: String?) -> void
+      attr_reader finish_reason: UIMessage::V1::finish_reason?
+      attr_reader response: untyped?
+
+      def initialize: (Enumerable[untyped] events, ?message_id: String?, ?lifecycle: :message | :step | :content) -> void
       def each: () { (UIMessage::V1::Event) -> void } -> self
               | () -> Enumerator[UIMessage::V1::Event, self]
     end
@@ -31,7 +34,8 @@ module AgentStream
         Enumerable[untyped] events,
         ?message_id: String?,
         ?finish_reason: UIMessage::V1::finish_reason,
-        ?id_generator: ^() -> String
+        ?id_generator: ^() -> String,
+        ?lifecycle: :message | :step | :content
       ) -> void
       def each: () { (UIMessage::V1::Event) -> void } -> self
               | () -> Enumerator[UIMessage::V1::Event, self]
@@ -115,7 +119,7 @@ module AgentStream
         attr_reader frames: Array[String]
 
         def self.headers: () -> Hash[String, String]
-        def initialize: (?_StringSink? sink) -> void
+        def initialize: (?_StringSink? sink, ?continuation: Enumerable[Event]?) -> void
         def headers: () -> Hash[String, String]
         def started?: () -> bool
         def finished?: () -> bool

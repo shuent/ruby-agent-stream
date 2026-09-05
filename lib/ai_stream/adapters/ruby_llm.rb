@@ -15,11 +15,13 @@ module AgentStream
     class RubyLLM
       include Enumerable
 
-      def initialize(events, message_id: nil, finish_reason: :stop, id_generator: -> { SecureRandom.uuid })
+      def initialize(events, message_id: nil, finish_reason: :stop, id_generator: -> { SecureRandom.uuid },
+                     lifecycle: :message)
         @events = events
         @message_id = message_id
         @finish_reason = finish_reason
         @id_generator = id_generator
+        @lifecycle = lifecycle
       end
 
       def each(&consumer)
@@ -34,14 +36,17 @@ module AgentStream
       private
 
       def reset(consumer)
-        @emitter = Emitter.new(message_id: @message_id, consumer: consumer)
+        @emitter = Emitter.new(message_id: @message_id, consumer: consumer, lifecycle: @lifecycle)
         @tools = {}
         @tool_ids_by_stream_key = {}
         @latest_tool_id = nil
         @text_id = nil
         @reasoning_id = nil
         @model_id = nil
-        @usage = nil
+        @usage = {}
+        @step_usage = nil
+        @next_chunk_starts_step = false
+        @observed_finish_reason = nil
       end
 
       def dispatch(event)
@@ -56,9 +61,13 @@ module AgentStream
       end
 
       def chunk(chunk)
+        begin_next_step if @next_chunk_starts_step
         @emitter.start
-        @model_id ||= chunk.model_id
-        @usage = chunk.tokens.to_h if chunk.tokens
+        @model_id ||= chunk_model(chunk)
+        @step_usage = chunk.tokens.to_h if chunk.tokens
+        if chunk.respond_to?(:finish_reason) && chunk.finish_reason
+          @observed_finish_reason = normalize_finish_reason(chunk.finish_reason)
+        end
         reasoning(chunk.thinking) if chunk.thinking
         content(chunk.content) unless chunk.content.nil? || chunk.content == ""
         tool_calls(chunk.tool_calls) if chunk.tool_call?
@@ -84,19 +93,20 @@ module AgentStream
       end
 
       def normalize_content(content)
-        case content
-        when String
-          [content, []]
-        when ::RubyLLM::Content
-          validate_attachments(content.attachments)
-          [content.text, content.attachments]
-        when ::RubyLLM::Content::Raw
+        return [content, []] if content.is_a?(String)
+
+        if defined?(::RubyLLM::Content::Raw) && content.is_a?(::RubyLLM::Content::Raw)
           return [content.value, []] if content.value.is_a?(String)
 
           raise Error, "RubyLLM::Content::Raw cannot be mapped to text from #{content.value.class}"
-        else
-          raise Error, "RubyLLM chunk content cannot be mapped to text from #{content.class}"
         end
+
+        if defined?(::RubyLLM::Content) && content.is_a?(::RubyLLM::Content)
+          validate_attachments(content.attachments)
+          return [content.text, content.attachments]
+        end
+
+        raise Error, "RubyLLM chunk content cannot be mapped to text from #{content.class}"
       end
 
       def validate_attachments(attachments)
@@ -181,17 +191,19 @@ module AgentStream
 
         @emitter.event(:tool_output_available, tool_call_id: message.tool_call_id,
                                                output: tool_result_value(message.content))
+        @next_chunk_starts_step = true
       end
 
       def tool_result_value(content)
-        case content
-        when ::RubyLLM::Content::Raw then content.value
-        when ::RubyLLM::Content
+        return content.value if defined?(::RubyLLM::Content::Raw) && content.is_a?(::RubyLLM::Content::Raw)
+
+        if defined?(::RubyLLM::Content) && content.is_a?(::RubyLLM::Content)
           return content.text if content.attachments.empty?
 
           raise Error, "RubyLLM tool-result attachments are not JSON-compatible outputs"
-        else content
         end
+
+        parse_json_container(content)
       end
 
       def flush_tools
@@ -216,10 +228,30 @@ module AgentStream
 
       def finish
         flush_tools
+        commit_step_usage
         metadata = { provider: "ruby_llm" }
         metadata[:model] = @model_id if @model_id
-        metadata[:usage] = @usage if @usage
-        @emitter.finish(finish_reason: @finish_reason, message_metadata: metadata)
+        metadata[:usage] = @usage unless @usage.empty?
+        @emitter.finish(finish_reason: @observed_finish_reason || @finish_reason, message_metadata: metadata)
+      end
+
+      def begin_next_step
+        commit_step_usage
+        @emitter.next_step
+        @tool_ids_by_stream_key = {}
+        @latest_tool_id = nil
+        @text_id = nil
+        @reasoning_id = nil
+        @step_usage = nil
+        @next_chunk_starts_step = false
+      end
+
+      def commit_step_usage
+        return unless @step_usage
+
+        @step_usage.each do |key, value|
+          @usage[key] = @usage.fetch(key, 0) + value if value.is_a?(Numeric)
+        end
       end
 
       def validate_binding(key, id)
@@ -233,6 +265,31 @@ module AgentStream
 
       def bind(key, id)
         @tool_ids_by_stream_key[key] = id unless key.nil?
+      end
+
+      def chunk_model(chunk)
+        return chunk.model_id if chunk.respond_to?(:model_id)
+        return chunk.model if chunk.respond_to?(:model)
+
+        nil
+      end
+
+      def normalize_finish_reason(reason)
+        case reason.to_sym
+        when :max_tokens then :length
+        when :content_filter then :content_filter
+        when :tool_calls then :tool_calls
+        when :stop then :stop
+        else :other
+        end
+      end
+
+      def parse_json_container(value)
+        return value unless value.is_a?(String) && ["{", "["].include?(value.lstrip[0])
+
+        JSON.parse(value)
+      rescue JSON::ParserError
+        value
       end
 
       def parse_json(text) = text.empty? ? {} : JSON.parse(text)

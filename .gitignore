@@ -13,3 +13,6 @@
 /examples/rails_demo/storage/*
 /examples/rails_demo/config/master.key
 /examples/rails_demo/config/credentials*.yml.enc
+/.env
+/.env.swp
+/examples/rails_demo/.env

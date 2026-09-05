@@ -1,30 +1,47 @@
-# Plain model events + Rails streaming server
+# Stockroom AI — Rails inventory SaaS demo
 
-Rails 8.1 の `ActionController::Live` で、modelが返すplain event objectをUI Message eventへ変換して流すdemoです。Controllerには取得、変換、投入の全体像がそのまま現れます。
+Rails 8.1 / SQLite のデモ在庫管理と、React / AI SDK `useChat` のAIアシスタントです。在庫・販売・仕入条件の通常ダッシュボードとread toolsは同じ業務モデルを使います。補充発注は標準tool approvalの承認後にデモDBへ一度だけ登録します。外部仕入先への送信はありません。
 
-```ruby
-DemoModel.new.stream(scenario: params.fetch(:scenario, "complete")).each do |provider_event|
-  ui_stream << AgentStream::UIMessage::V1::Event.new(provider_event.type, **provider_event.payload)
-end
-```
+## 起動
 
-`DemoModel` は `Data.define(:type, :payload)` で作ったhardcoded eventを `Enumerator` からyieldするだけで、AgentStreamを知りません。実applicationでは `DemoModel#stream` をprovider SDKやagentのevent streamに、変換部分をprovider固有のmappingまたは組み込みadapterに置き換えます。
+リポジトリルートから:
 
 ```bash
+cd examples/rails_demo
 bundle install
-bin/rails test
+bin/rails db:prepare
 bin/rails server -b 127.0.0.1 -p 3000
 ```
 
-raw protocol の確認:
+別ターミナル:
 
 ```bash
-curl -N -X POST \
-  -H 'Content-Type: application/json' \
-  --data '{"scenario":"complete"}' \
-  http://127.0.0.1:3000/chat
+cd examples/react_client
+npm install
+npm run dev -- --host 127.0.0.1
 ```
 
-scenario は `complete`、`error`、`slow` です。`../react_client` は `/chat` を port 3000 に proxy し、AI SDK の `useChat` で同じ response を消費します。
+ブラウザで `http://127.0.0.1:5173/` を開きます。既存DBを既知の4商品へ戻す場合は画面の「デモデータをリセット」を確認して実行します。会話・承認の監査履歴は残り、古い保留承認とキャッシュは無効になります。
 
-Controllerはheadersを最初のeventより前に設定し、`ensure` で `response.stream` をcloseします。
+「API不要デモ」は既存 `DemoModel` の固定イベントを `/chat/no-llm-call` から再生します。入力による在庫調査は行いません。`/chat` は互換aliasです。どちらもAPI key不要です。
+
+公式SDK `/chat/openai` とRubyLLM `/chat/ruby_llm` は実API経路です。モデルは `gpt-5.6-luna`、reasoningは `medium`。既存initializerがリポジトリルート `.env` の `OPENAI_APIKEY` を読みます。キーをコマンド引数やログに含めないでください。実API呼出しには課金が発生します。
+
+本文送信はボタンのみです。Enter / Shift+Enter / IME確定では送信しません。会話はサーバーへ保存し、ブラウザのsessionStorageの会話IDとセッショントークンで復元します。承認ボタンは `addToolApprovalResponse` を呼び、標準の自動HTTP継続で同じassistant/tool callへ結果を返します。承認応答自体はLLMを呼びません。
+
+## 限定検証
+
+```bash
+# examples/rails_demo
+bin/rails test test/controllers/chats_controller_test.rb test/controllers/saas_flow_test.rb test/models/inventory_catalog_test.rb test/models/agent_chat_test.rb
+# 非課金のプロセス間cache確認（順に1回ずつ）
+bin/rails runner script/verify_cache_persistence.rb write
+bin/rails runner script/verify_cache_persistence.rb read
+# examples/react_client
+npm test
+npm run build
+```
+
+`script/verify_agent.rb openai` / `ruby_llm` は課金を伴う少数ターンの検証です。今回の実行状況、未達、非課金ブラウザfixtureの証拠は [app-report](../../docs/agent-demo/app-report.md) を参照してください。
+
+これは認証・課金を備えた製品ではなくローカルデモです。ダッシュボードとresetは共有デモデータを対象にします。
