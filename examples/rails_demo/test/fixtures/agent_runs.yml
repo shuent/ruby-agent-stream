@@ -4,8 +4,6 @@ one:
   run_id: run-one
   adapter: openai
   provider_model: gpt-5.6-luna
-  cache_status: miss
-  normalized_prompt: one
   tool_names: "[]"
   reasoning_observed: false
   status: completed
@@ -14,8 +12,6 @@ two:
   run_id: run-two
   adapter: ruby_llm
   provider_model: gpt-5.6-luna
-  cache_status: hit
-  normalized_prompt: two
   tool_names: "[]"
   reasoning_observed: false
   status: completed

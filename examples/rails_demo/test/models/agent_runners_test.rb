@@ -26,6 +26,8 @@ class AgentRunnersTest < ActiveSupport::TestCase
 
   test "RubyLLM counts provider requests rather than tool result messages" do
     agent = build_agent("ruby_llm")
+    previous_key = RubyLLM.config.openai_api_key
+    RubyLLM.configure { |config| config.openai_api_key = "non-billing-test-key" }
     chat = RubyLLM.chat(model: AgentChat::MODEL, provider: :openai, protocol: :responses, assume_model_exists: true)
     requests = 0
     chat.provider.define_singleton_method(:complete) do |messages, before_request:, **options, &block|
@@ -55,6 +57,7 @@ class AgentRunnersTest < ActiveSupport::TestCase
     assert stream.finished?
   ensure
     RubyLLM.define_singleton_method(:chat, original) if original
+    RubyLLM.configure { |config| config.openai_api_key = previous_key }
   end
 
   private

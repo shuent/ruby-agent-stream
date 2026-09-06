@@ -5,6 +5,5 @@ class DemoRevision < ApplicationRecord
 
   def self.invalidate!
     first_or_create!(token: SecureRandom.uuid).update!(token: SecureRandom.uuid)
-    AgentCacheEntry.delete_all
   end
 end

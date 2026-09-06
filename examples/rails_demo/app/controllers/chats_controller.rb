@@ -10,6 +10,10 @@ class ChatsController < ApplicationController
     end)
   end
 
+  def demo
+    stream_agent("no-llm-call")
+  end
+
   def openai
     stream_agent("openai")
   end
@@ -32,7 +36,6 @@ class ChatsController < ApplicationController
       debug_error: Rails.env.development? && ActiveModel::Type::Boolean.new.cast(params[:debug_error])
     )
     response.headers["X-Agent-Run-Id"] = agent.run.run_id
-    response.headers["X-Agent-Cache"] = agent.run.cache_status
     stream_events(agent, continuation: agent.continuation_events)
   rescue StandardError => error
     Rails.logger.error("Agent request failed: #{error.class}: #{error.message}")
@@ -80,7 +83,7 @@ class ChatsController < ApplicationController
     response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Demo-Session"
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    response.headers["Access-Control-Expose-Headers"] = "X-Agent-Run-Id, X-Agent-Cache"
+    response.headers["Access-Control-Expose-Headers"] = "X-Agent-Run-Id"
     response.headers["Vary"] = "Origin"
   end
 end

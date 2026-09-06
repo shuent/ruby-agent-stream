@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses, type UIMessage, type UIMessagePart } from "ai";
-import { asToolOutput, templates, toolName, getDashboard, getConversation, startConversation, resetDemo, sessionHeaders, type Conversation, type Dashboard, type ApprovalDecision, type Adapter, type RunData } from "./domain";
+import { asToolOutput, templates, toolName, getDashboard, listConversations, getConversation, startConversation, resetDemo, sessionHeaders, type ConversationSummary, type Conversation, type Dashboard, type ApprovalDecision, type Adapter, type RunData } from "./domain";
 
 const labels: Record<string, string> = {
   search_inventory: "在庫", review_sales: "販売実績",
@@ -51,17 +51,29 @@ export function PartView({ part, onApproval, busy }: PartProps) {
   if (toolName(part)) return <ToolCard part={part} onApproval={onApproval} busy={busy} />;
   if (part.type === "data-run") {
     const run = (part as any).data as RunData;
-    return <div className="run-chip" data-testid="run-meta">{run.adapter === "openai" ? "公式SDK" : "RubyLLM"} · {run.model} · {run.reasoning_effort} · cache {run.cache_status}</div>;
+    return <div className="run-chip" data-testid="run-meta">{run.adapter === "openai" ? "公式SDK" : "RubyLLM"} · {run.model} · {run.reasoning_effort}</div>;
   }
   return <details className="raw"><summary>{part.type}</summary><pre>{JSON.stringify(part, null, 2)}</pre></details>;
 }
 
-function ChatSession({ conversation, onNew, onChanged }: { conversation: Conversation; onNew: () => void; onChanged: () => void }) {
+function ChatSession({ conversation, onNew, onChanged, onBusy, onSaved }: { conversation: Conversation; onNew: () => void; onChanged: () => void; onBusy: (busy: boolean) => void; onSaved: (id: string) => void }) {
   const adapter = conversation.adapter;
-  const [input, setInput] = useState<string>(templates[0].text);
+  const [input, setInput] = useState<string>("");
   const [debugError, setDebugError] = useState(false);
   const [runData, setRunData] = useState<RunData | null>(null);
-  const transport = useMemo(() => new DefaultChatTransport({ api: `/chat/${adapter}`, headers: sessionHeaders }), [adapter]);
+  const savedId = useRef(conversation.draft ? null : conversation.id);
+  const transport = useMemo(() => new DefaultChatTransport({
+    api: `/chat/${adapter}`, headers: sessionHeaders,
+    prepareSendMessagesRequest: async ({ messages, body, trigger, messageId }) => {
+      if (!savedId.current) {
+        const saved = await startConversation(adapter);
+        savedId.current = saved.id;
+        sessionStorage.setItem("stockroom-conversation", saved.id);
+        onSaved(saved.id);
+      }
+      return { body: { ...body, id: savedId.current, messages, trigger, messageId } };
+    },
+  }), [adapter]);
   const { messages, status, error, sendMessage, regenerate, stop, clearError, addToolApprovalResponse } = useChat({
     id: conversation.id, transport, messages: conversation.messages,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
@@ -69,6 +81,7 @@ function ChatSession({ conversation, onNew, onChanged }: { conversation: Convers
     onData: (part) => { if (part.type === "data-run") setRunData((part as any).data as RunData); },
   });
   const busy = status === "submitted" || status === "streaming";
+  useEffect(() => { onBusy(busy); return () => onBusy(false); }, [busy, onBusy]);
   const awaitingApproval = messages.some((m) => m.parts.some((p: any) => p.state === "approval-requested" || p.state === "approval-responded"));
 
   const submit = (event?: FormEvent) => {
@@ -86,11 +99,11 @@ function ChatSession({ conversation, onNew, onChanged }: { conversation: Convers
     <main className="chat-shell">
       <header className="topbar">
         <div><b>在庫補充アシスタント</b><span>デモデータ</span></div>
-        <button className="ghost" data-testid="new-chat-mobile" onClick={onNew}>新しい会話</button>
+        <button className="ghost" data-testid="new-chat-mobile" disabled={busy} onClick={onNew}>新しい会話</button>
       </header>
       <section className="messages" data-testid="messages">
         {adapter === "no-llm-call" && <p className="demo-notice">API不要の固定イベントデモです。入力内容に関係なく、元のDemoModelのtext・reasoning・tool callを表示します。</p>}
-        {runData && <div className="run-chip" data-testid="run-meta">{runData.adapter === "openai" ? "公式SDK" : "RubyLLM"} · {runData.model} · {runData.reasoning_effort} · cache {runData.cache_status}</div>}
+        {runData && <div className="run-chip" data-testid="run-meta">{runData.adapter === "openai" ? "公式SDK" : "RubyLLM"} · {runData.model} · {runData.reasoning_effort}</div>}
         {messages.length === 0 && (
           <div className="welcome"><span>◫</span><h1>今日は何を補充しますか？</h1><p>在庫・販売実績・仕入条件をツールで調べ、発注候補を計算します。</p></div>
         )}
@@ -133,20 +146,49 @@ function DashboardView({ data, onReset, onChat }: { data: Dashboard | null; onRe
 export function App() {
   const [adapter, setAdapter] = useState<Adapter>((sessionStorage.getItem("stockroom-adapter") as Adapter) || "openai");
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const selection = useRef(0);
   const [data, setData] = useState<Dashboard | null>(null);
-  const [page, setPage] = useState<"dashboard" | "chat">("dashboard");
+  const [page, setPage] = useState<"dashboard" | "chat" | "history">("dashboard");
   const [error, setError] = useState("");
   const [resetConfirm, setResetConfirm] = useState(false);
-  const refresh = () => { void getDashboard().then(setData).catch((e) => setError(e.message)); };
-  useEffect(() => { refresh(); const id = sessionStorage.getItem("stockroom-conversation"); if (id) void getConversation(id).then(setConversation).catch(() => sessionStorage.removeItem("stockroom-conversation")); }, []);
-  const newChat = async (next = adapter) => {
-    try { setError(""); const value = await startConversation(next); setConversation(value); setAdapter(next); sessionStorage.setItem("stockroom-conversation", value.id); sessionStorage.setItem("stockroom-adapter", next); setPage("chat"); }
-    catch (e) { setError((e as Error).message); }
+  const refresh = () => {
+    void getDashboard().then(setData).catch((e) => setError(e.message));
+    void listConversations().then(setConversations).catch((e) => setError(e.message));
+  };
+  const select = (value: Conversation) => {
+    setConversation(value); setSelectedId(value.id); setAdapter(value.adapter);
+    sessionStorage.setItem("stockroom-conversation", value.id);
+    sessionStorage.setItem("stockroom-adapter", value.adapter);
+    setPage("chat");
+  };
+  const loadChat = async (id: string) => {
+    const request = ++selection.current;
+    setLoading(true); setError("");
+    try { const value = await getConversation(id); if (request === selection.current) select(value); }
+    catch (e) { if (request === selection.current) setError((e as Error).message); }
+    finally { if (request === selection.current) setLoading(false); }
+  };
+  useEffect(() => {
+    refresh();
+    const id = sessionStorage.getItem("stockroom-conversation");
+    if (id) void loadChat(id);
+  }, []);
+  const newChat = (next = adapter) => {
+    ++selection.current;
+    setLoading(false); setError(""); setSelectedId(null); setAdapter(next);
+    setConversation({ id: crypto.randomUUID(), adapter: next, title: "新しい会話", updated_at: "", messages: [], draft: true });
+    sessionStorage.removeItem("stockroom-conversation");
+    sessionStorage.setItem("stockroom-adapter", next);
+    setPage("chat");
   };
   const openChat = () => { if (conversation) setPage("chat"); else void newChat(); };
   return <div className="app-frame">
-    <aside className="sidebar"><div className="brand"><span>◫</span><b>Stockroom AI</b></div><nav><button className={page === "dashboard" ? "active" : ""} data-testid="nav-dashboard" onClick={() => setPage("dashboard")}>在庫ダッシュボード</button><button className={page === "chat" ? "active" : ""} data-testid="nav-chat" onClick={openChat}>AIアシスタント</button></nav><button className="new-chat" data-testid="new-chat" onClick={() => void newChat()}>＋ 新しい会話</button><nav><small>モデル接続</small>{([ ["openai", "公式 OpenAI SDK"], ["ruby_llm", "RubyLLM"], ["no-llm-call", "API不要デモ"] ] as const).map(([value, label]) => <button className={adapter === value ? "active" : ""} data-testid={`adapter-${value}`} key={value} onClick={() => void newChat(value)}>{label}</button>)}</nav><div className="sidebar-note"><b>デモデータ環境</b><span>gpt-5.6-luna / medium</span></div></aside>
-    <div className="content">{error && <p className="error" role="alert">{error}</p>}{page === "dashboard" ? <DashboardView data={data} onReset={() => setResetConfirm(true)} onChat={openChat} /> : conversation && <ChatSession key={conversation.id} conversation={conversation} onNew={() => void newChat()} onChanged={refresh} />}</div>
-    {resetConfirm && <div className="modal-backdrop"><section className="confirm-card" role="dialog" aria-modal="true" aria-labelledby="reset-title"><h2 id="reset-title">デモデータをリセットしますか？</h2><p>在庫・販売・仕入条件を初期状態へ戻し、登録した補充発注を削除します。過去のキャッシュと保留中の承認は使えなくなります。</p><button data-testid="confirm-reset" onClick={() => { void resetDemo().then((value) => { setData(value); setConversation(null); sessionStorage.removeItem("stockroom-conversation"); setResetConfirm(false); setPage("dashboard"); }).catch((e) => setError(e.message)); }}>リセットする</button><button className="secondary" onClick={() => setResetConfirm(false)}>キャンセル</button></section></div>}
+    <aside className="sidebar"><div className="brand"><span>◫</span><b>Stockroom AI</b></div><nav><button className={page === "dashboard" ? "active" : ""} data-testid="nav-dashboard" onClick={() => setPage("dashboard")}>在庫ダッシュボード</button><button className={page === "chat" ? "active" : ""} data-testid="nav-chat" disabled={loading} onClick={openChat}>AIアシスタント</button></nav><button className="new-chat" data-testid="new-chat" disabled={busy || loading} onClick={() => void newChat()}>＋ 新しい会話</button><nav className="conversation-list" aria-label="過去の会話" data-testid="conversation-list"><small>過去の会話</small>{conversations.slice(0, 10).map((item) => <button key={item.id} data-testid={`conversation-${item.id}`} aria-current={selectedId === item.id ? "true" : undefined} className={selectedId === item.id ? "active" : ""} disabled={busy || loading} onClick={() => void loadChat(item.id)}>{item.title}</button>)}</nav><button className="new-chat" data-testid="all-conversations" onClick={() => { refresh(); setPage("history"); }}>会話一覧を見る</button><nav><small>モデル接続</small>{([ ["openai", "公式 OpenAI SDK"], ["ruby_llm", "RubyLLM"], ["no-llm-call", "API不要デモ"] ] as const).map(([value, label]) => <button className={adapter === value ? "active" : ""} disabled={busy || loading} data-testid={`adapter-${value}`} key={value} onClick={() => void newChat(value)}>{label}</button>)}</nav><div className="sidebar-note"><b>デモデータ環境</b><span>gpt-5.6-luna / medium</span></div></aside>
+    <div className="content">{error && <p className="error" role="alert">{error}</p>}{page === "dashboard" ? <DashboardView data={data} onReset={() => setResetConfirm(true)} onChat={openChat} /> : null}{page === "history" && <main className="dashboard" data-testid="history-page"><header className="page-heading"><div><h1>会話一覧</h1><p>過去の会話を選んで続けられます。</p></div></header><section className="data-card history-list">{conversations.length === 0 ? <p className="empty-state">会話はまだありません。</p> : conversations.map((item) => <button key={item.id} data-testid={`history-${item.id}`} disabled={busy || loading} onClick={() => void loadChat(item.id)}><span>{item.title}</span><small>{new Date(item.updated_at).toLocaleDateString("ja-JP")}</small></button>)}</section></main>}<div hidden={page !== "chat"}>{loading ? <p role="status">会話を読み込み中…</p> : conversation && <ChatSession key={conversation.id} conversation={conversation} onNew={() => void newChat()} onChanged={refresh} onBusy={setBusy} onSaved={setSelectedId} />}</div></div>
+    {resetConfirm && <div className="modal-backdrop"><section className="confirm-card" role="dialog" aria-modal="true" aria-labelledby="reset-title"><h2 id="reset-title">デモデータをリセットしますか？</h2><p>在庫・販売・仕入条件を初期状態へ戻し、登録した補充発注を削除します。保留中の承認は使えなくなります。</p><button data-testid="confirm-reset" onClick={() => { void resetDemo().then((value) => { setData(value); setConversation(null); sessionStorage.removeItem("stockroom-conversation"); setResetConfirm(false); setPage("dashboard"); }).catch((e) => setError(e.message)); }}>リセットする</button><button className="secondary" onClick={() => setResetConfirm(false)}>キャンセル</button></section></div>}
   </div>;
 }

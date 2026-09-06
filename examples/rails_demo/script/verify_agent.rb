@@ -12,7 +12,7 @@ report = { adapter: adapter, model: AgentChat::MODEL, reasoning_effort: AgentCha
   before = ReplenishmentOrder.count
   agent = AgentChat.new(adapter: adapter, messages: [user_message], conversation: conversation.reload)
   events = agent.to_enum(:each).to_a
-  report[:turns] << { run_id: agent.run.run_id, cache: agent.run.reload.cache_status, status: agent.run.status,
+  report[:turns] << { run_id: agent.run.run_id, status: agent.run.status,
     tool_names: agent.run.tools, reasoning_observed: agent.run.reasoning_observed,
     event_counts: events.map(&:type).tally, orders_before: before, orders_after: ReplenishmentOrder.count,
     text: events.select { |e| e.type == :text_delta }.map { |e| e.attributes[:delta] }.join }

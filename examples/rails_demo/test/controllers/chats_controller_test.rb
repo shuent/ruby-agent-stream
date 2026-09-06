@@ -2,7 +2,7 @@ require "test_helper"
 
 class ChatsControllerTest < ActionDispatch::IntegrationTest
   test "converts provider events and streams UI protocol frames" do
-    post "/chat/no-llm-call", params: { scenario: "complete" }, as: :json
+    post "/chat", params: { scenario: "complete" }, as: :json
 
     assert_response :success
     assert_equal "text/event-stream", response.headers["content-type"]
@@ -21,30 +21,18 @@ class ChatsControllerTest < ActionDispatch::IntegrationTest
     assert_includes response.headers["Access-Control-Allow-Methods"], "POST"
   end
 
-  test "agent endpoint replays a persisted successful response without a provider call" do
-    messages = [{ "id" => "user-1", "role" => "user", "parts" => [{ "type" => "text", "text" => "在庫を確認" }] }]
-    digest = AgentCacheKey.digest(adapter: "openai", messages: messages, system_prompt: AgentChat::SYSTEM_PROMPT)
-    events = [
-      AgentStream::UIMessage::V1::Event.new(:start, message_id: "cached"),
-      AgentStream::UIMessage::V1::Event.new(:start_step),
-      AgentStream::UIMessage::V1::Event.new(:text_start, id: "answer"),
-      AgentStream::UIMessage::V1::Event.new(:text_delta, id: "answer", delta: "保存済みの提案"),
-      AgentStream::UIMessage::V1::Event.new(:text_end, id: "answer"),
-      AgentStream::UIMessage::V1::Event.new(:finish_step),
-      AgentStream::UIMessage::V1::Event.new(:finish, finish_reason: :stop)
-    ]
-    AgentCacheEntry.create!(request_digest: digest, adapter: "openai", provider_model: AgentChat::MODEL,
-                            normalized_prompt: "在庫を確認", event_log: AgentEventLog.dump(events),
-                            run_metadata: JSON.generate(tool_names: %w[search_inventory review_sales], reasoning_observed: true))
-
+  test "API-free conversation persists messages and regenerates through the runner" do
     token = SecureRandom.uuid
-    conversation = AgentConversation.start!(adapter: "openai", session_token: token)
-    post "/chat/openai", params: { id: conversation.public_id, messages: messages }, headers: { "X-Demo-Session" => token }, as: :json
-
-    assert_response :success
-    assert_includes response.body, "保存済みの提案"
-    assert_includes response.body, '"type":"data-run"'
-    assert_includes response.body, '"cache_status":"hit"'
+    conversation = AgentConversation.start!(adapter: "no-llm-call", session_token: token)
+    2.times do |index|
+      post "/chat/no-llm-call", params: { id: conversation.public_id,
+        messages: [{ role: "user", parts: [{ type: "text", text: "在庫を確認" }] }], regenerate: index == 1 },
+        headers: { "X-Demo-Session" => token }, as: :json
+      assert_response :success
+      assert_includes response.body, '"type":"text-delta"'
+      assert_nil response.headers["X-Agent-Cache"]
+      assert_equal %w[user assistant], conversation.reload.messages.map { |m| m["role"] }
+    end
   end
 
   test "preflight does not reflect an unrelated origin" do

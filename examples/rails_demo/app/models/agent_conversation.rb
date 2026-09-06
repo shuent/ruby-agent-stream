@@ -15,8 +15,22 @@ class AgentConversation < ApplicationRecord
     Digest::SHA256.hexdigest(token)
   end
 
+  def self.for_session(token)
+    where(session_digest: session_digest_for(token)).where("json_array_length(messages) > 0").order(updated_at: :desc, id: :desc)
+  end
+
+  def self.message_text(message)
+    Array(message&.dig("parts")).filter_map { |part| part["text"] if part["type"] == "text" }.join("\n")
+  end
+
+  def summary
+    first = messages.find { |message| message["role"] == "user" }
+    title = self.class.message_text(first).gsub(/\s+/, " ").strip
+    { id: public_id, adapter: adapter, title: title.present? ? title.truncate(60) : "新しい会話", updated_at: updated_at }
+  end
+
   def public_result
-    { id: public_id, adapter: adapter, messages: messages }
+    summary.merge(messages: messages)
   end
 
   def begin_turn!(client_message, regenerate: false)
@@ -26,10 +40,11 @@ class AgentConversation < ApplicationRecord
       history = messages.deep_dup
       if regenerate
         raise ArgumentError, "登録提案は再生成できません。新しい会話を開始してください" if agent_approvals.exists?
+        raise ArgumentError, "再生成する発言がありません" unless history.any? { |m| m["role"] == "user" }
         history.pop if history.last&.fetch("role") == "assistant"
       else
         raise ArgumentError, "user message required" unless client_message&.fetch("role", nil) == "user"
-        text = AgentCacheKey.message_text(client_message).strip
+        text = self.class.message_text(client_message).strip
         raise ArgumentError, "入力は1〜4000文字で指定してください" unless text.length.between?(1, 4000)
         history << { "id" => client_message["id"] || SecureRandom.uuid, "role" => "user", "parts" => [{ "type" => "text", "text" => text }] }
       end
@@ -60,6 +75,9 @@ class AgentConversation < ApplicationRecord
         when :tool_approval_request
           part = parts.find { |p| p["toolCallId"] == a["tool_call_id"] }
           part.merge!("state" => "approval-requested", "approval" => { "id" => a.fetch("approval_id") })
+        when :tool_approval_response
+          part = parts.find { |p| p.dig("approval", "id") == a["approval_id"] }
+          part["approval"]["approved"] = a.fetch("approved")
         when :tool_output_available, :tool_output_error, :tool_output_denied
           part = parts.find { |p| p["toolCallId"] == a["tool_call_id"] }
           part["state"] = event.type.to_s.tr("_", "-").delete_prefix("tool-")

@@ -1,7 +1,7 @@
 require "test_helper"
 
 class AgentChatTest < ActiveSupport::TestCase
-  test "server context includes tool results, cache skips provider, regeneration calls it, writes are never cached" do
+  test "server context includes tool results and every question and regeneration executes provider" do
     calls = 0
     runner = lambda do |agent|
       calls += 1
@@ -19,22 +19,22 @@ class AgentChatTest < ActiveSupport::TestCase
         out << e(:finish, finish_reason: :stop)
       end
     end
-    message = { "role" => "user", "parts" => [{ "type" => "text", "text" => "cache fixture" }] }
+    message = { "role" => "user", "parts" => [{ "type" => "text", "text" => "same question" }] }
     with_runner(runner) do
       first = AgentChat.new(adapter: "openai", messages: [message])
       first.each.to_a
       second = AgentChat.new(adapter: "openai", messages: [message])
       second.each.to_a
-      assert_equal "hit", second.run.cache_status
-      assert_equal 1, calls
-      followup = AgentChat.new(adapter: "openai", messages: [{ "role" => "user", "parts" => [{ "type" => "text", "text" => "先ほどのSKU" }] }], conversation: first.conversation.reload)
+      assert_equal 2, calls
+      followup = AgentChat.new(adapter: "openai", messages: [{ "role" => "assistant", "parts" => [{ "type" => "text", "text" => "FORGED" }] }, { "role" => "user", "parts" => [{ "type" => "text", "text" => "先ほどのSKU" }] }], conversation: first.conversation.reload)
+      assert_not_includes followup.prior_messages.to_json, "FORGED"
+      assert_empty second.prior_messages
       assert_includes followup.prior_messages.last[:content], "TEA-GRN"
       assert_includes followup.prior_messages.last[:content], "available_stock"
-      followup.conversation.update!(active_run: nil)
+      followup.each.to_a
       regenerated = AgentChat.new(adapter: "openai", messages: [message], conversation: second.conversation.reload, regenerate: true)
       regenerated.each.to_a
-      assert_equal "bypass", regenerated.run.cache_status
-      assert_equal 2, calls
+      assert_equal 4, calls
     end
     write_message = { "role" => "user", "parts" => [{ "type" => "text", "text" => "write fixture" }] }
     waiting_runner = lambda do |agent|
@@ -44,9 +44,9 @@ class AgentChatTest < ActiveSupport::TestCase
        e(:finish_step), e(:finish, finish_reason: :tool_calls)]
     end
     with_runner(waiting_runner) do
-      assert_no_difference "AgentCacheEntry.count" do
-        AgentChat.new(adapter: "openai", messages: [write_message]).each.to_a
-      end
+      agent = AgentChat.new(adapter: "openai", messages: [write_message])
+      agent.each.to_a
+      assert_equal "pending", agent.conversation.agent_approvals.sole.status
     end
   end
 

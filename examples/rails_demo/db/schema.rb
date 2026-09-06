@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_05_061902) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_06_003234) do
   create_table "agent_approvals", force: :cascade do |t|
     t.integer "agent_conversation_id", null: false
     t.datetime "created_at", null: false
@@ -28,18 +28,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_05_061902) do
     t.index ["public_id"], name: "index_agent_approvals_on_public_id", unique: true
   end
 
-  create_table "agent_cache_entries", force: :cascade do |t|
-    t.string "adapter", null: false
-    t.datetime "created_at", null: false
-    t.text "event_log", null: false
-    t.text "normalized_prompt", null: false
-    t.string "provider_model", null: false
-    t.string "request_digest", null: false
-    t.text "run_metadata", null: false
-    t.datetime "updated_at", null: false
-    t.index ["request_digest"], name: "index_agent_cache_entries_on_request_digest", unique: true
-  end
-
   create_table "agent_conversations", force: :cascade do |t|
     t.string "active_run"
     t.string "adapter", null: false
@@ -50,14 +38,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_05_061902) do
     t.string "session_digest", null: false
     t.datetime "updated_at", null: false
     t.index ["public_id"], name: "index_agent_conversations_on_public_id", unique: true
+    t.index ["session_digest", "updated_at"], name: "index_agent_conversations_on_session_digest_and_updated_at"
   end
 
   create_table "agent_runs", force: :cascade do |t|
     t.string "adapter", null: false
-    t.string "cache_status", null: false
     t.datetime "created_at", null: false
     t.text "error_message"
-    t.text "normalized_prompt", null: false
     t.string "provider_model", null: false
     t.boolean "reasoning_observed", default: false, null: false
     t.string "run_id", null: false

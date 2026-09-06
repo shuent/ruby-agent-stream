@@ -1,6 +1,6 @@
 class AgentChat
-  MODEL = AgentCacheKey::MODEL
-  REASONING = AgentCacheKey::REASONING
+  MODEL = "gpt-5.6-luna"
+  REASONING = "medium"
   MAX_STEPS = 6
   ADAPTERS = %w[openai ruby_llm no-llm-call].freeze
   SYSTEM_PROMPT = <<~PROMPT.freeze
@@ -12,7 +12,7 @@ class AgentChat
     通常の調査では登録ツールを使わず、最後は日本語でSKU・補充数・概算費用・根拠を200文字程度にまとめてください。
   PROMPT
 
-  attr_reader :adapter, :messages, :run, :cache_entry, :conversation, :continuation_events
+  attr_reader :adapter, :messages, :run, :conversation, :continuation_events
 
   def initialize(adapter:, messages:, conversation: nil, regenerate: false, debug_error: false)
     @adapter = adapter.to_s
@@ -21,17 +21,16 @@ class AgentChat
     raise ArgumentError, "会話の接続先が一致しません" unless @conversation.adapter == adapter
     @client_message = Array(messages).last
     @approval_parts = Array(@client_message&.dig("parts")).select { |p| p["state"] == "approval-responded" }
-    @continuation_events = @conversation.stored_events if @approval_parts.any?
+    if @approval_parts.any?
+      raise ArgumentError, "承認対象が現在の回答と一致しません" unless @conversation.messages.last&.dig("id") == @client_message["id"]
+      @continuation_events = @conversation.stored_events
+    end
     @conversation.begin_turn!(@client_message, regenerate: regenerate) if @approval_parts.empty?
     @messages = @conversation.messages
-    @normalized_prompt = @approval_parts.any? ? "approval response" : AgentCacheKey.normalize(prompt)
-    @digest = AgentCacheKey.digest(adapter: @adapter, messages: @messages, system_prompt: SYSTEM_PROMPT)
     @revision = InventoryCatalog.new.revision
-    @cache_entry = AgentCacheEntry.find_by(request_digest: @digest) unless regenerate || @approval_parts.any?
     @debug_error = debug_error
     @run = AgentRun.create!(run_id: SecureRandom.uuid, adapter: @adapter, provider_model: MODEL,
-      cache_status: @cache_entry ? "hit" : (regenerate || @approval_parts.any? ? "bypass" : "miss"),
-      normalized_prompt: @normalized_prompt, tool_names: "[]", status: "running")
+      tool_names: "[]", status: "running")
     @tool_records = []
   end
 
@@ -41,8 +40,8 @@ class AgentChat
     events = []
     source = if @approval_parts.any?
       approval_events
-    elsif cache_entry
-      AgentEventLog.load(cache_entry.event_log, run_event: run_event)
+    elsif adapter == "no-llm-call"
+      DemoModel.new.stream(scenario: "complete").lazy.map { |e| e.type == :start ? event(:start, message_id: message_id) : event(e.type, **e.payload) }
     else
       adapter == "openai" ? OpenaiAgentRunner.new(self) : RubyLlmAgentRunner.new(self)
     end
@@ -85,12 +84,12 @@ class AgentChat
   end
 
   def prompt
-    AgentCacheKey.message_text(messages.last)
+    AgentConversation.message_text(messages.last)
   end
 
   def prior_messages
     messages[0...-1].filter_map do |message|
-      text = AgentCacheKey.message_text(message)
+      text = AgentConversation.message_text(message)
       results = Array(message["parts"]).filter_map do |part|
         JSON.generate(part.slice("type", "input", "output", "state")) if part["type"].start_with?("tool-")
       end
@@ -101,7 +100,7 @@ class AgentChat
 
   def run_event
     event(:data, name: "run", transient: true, data: { run_id: run.run_id, adapter: adapter, model: MODEL,
-      reasoning_effort: REASONING, cache_status: run.cache_status, seed_version: InventoryCatalog::SEED_VERSION })
+      reasoning_effort: REASONING, seed_version: InventoryCatalog::SEED_VERSION })
   end
 
   private
@@ -142,15 +141,6 @@ class AgentChat
   def complete!(events)
     reasoning = events.any? { |e| e.type == :reasoning_delta }
     tool_names = @tool_records.map { |r| r.fetch(:name) }.uniq
-    if cache_entry
-      tool_names = cache_entry.metadata.fetch(:tool_names, [])
-      reasoning = cache_entry.metadata.fetch(:reasoning_observed, false)
-    elsif @approval_parts.empty? && !events.any? { |e| e.type == :tool_approval_request }
-      AgentCacheEntry.upsert({ request_digest: @digest, adapter: adapter, provider_model: MODEL,
-        normalized_prompt: @normalized_prompt, event_log: AgentEventLog.dump(events),
-        run_metadata: JSON.generate(tool_names: tool_names, tool_calls: @tool_records, reasoning_observed: reasoning),
-        created_at: Time.current, updated_at: Time.current }, unique_by: :request_digest)
-    end
     run.update!(status: events.any? { |e| e.type == :tool_approval_request } ? "awaiting_approval" : "completed",
                 tool_names: JSON.generate(tool_names), reasoning_observed: reasoning)
   end

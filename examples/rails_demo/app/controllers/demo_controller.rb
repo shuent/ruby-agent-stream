@@ -11,14 +11,6 @@ class DemoController < ApplicationController
     render json: DemoInventory.reset!
   end
 
-  def create_conversation
-    render json: AgentConversation.start!(adapter: params.fetch(:adapter), session_token: request.headers["X-Demo-Session"]).public_result
-  end
-
-  def conversation
-    render json: AgentConversation.for_session!(params[:id], request.headers["X-Demo-Session"]).public_result
-  end
-
   private
 
   def invalid_request(error)

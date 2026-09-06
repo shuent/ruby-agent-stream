@@ -13,7 +13,8 @@ export type Dashboard = {
   suppliers: Array<{ sku: string; supplier_name: string; lead_time_days: number; unit_cost_yen: number }>;
   orders: Order[];
 };
-export type Conversation = { id: string; adapter: Adapter; messages: UIMessage[] };
+export type ConversationSummary = { id: string; adapter: Adapter; title: string; updated_at: string };
+export type Conversation = ConversationSummary & { messages: UIMessage[]; draft?: boolean };
 export type ApprovalDecision = { id: string; approved: boolean };
 
 export function sessionToken(): string {
@@ -29,8 +30,11 @@ async function request<T>(path: string, method = "GET", body?: unknown): Promise
 }
 export const getDashboard = () => request<Dashboard>("/demo/dashboard");
 // Explicit confirmation resets only the example's demo data; all old approvals
-// and cached results become stale, including if reset restores identical rows.
+// become stale, including if reset restores identical rows.
 export const resetDemo = () => request<Dashboard>("/demo/reset", "POST", { confirmed: true });
+// Lists non-empty conversations owned by this browser session, newest first.
+// A local draft is persisted only when its first message is submitted.
+export const listConversations = () => request<ConversationSummary[]>("/demo/conversations");
 export const getConversation = (id: string) => request<Conversation>(`/demo/conversations/${id}`);
 export const startConversation = (adapter: Adapter) => request<Conversation>("/demo/conversations", "POST", { adapter });
 // Chat submits only a new user's text, or AI SDK approval-responded parts.
@@ -42,7 +46,6 @@ export type RunData = {
   adapter: Adapter;
   model: "gpt-5.6-luna";
   reasoning_effort: "medium";
-  cache_status: "miss" | "hit" | "bypass";
   seed_version: string;
 };
 

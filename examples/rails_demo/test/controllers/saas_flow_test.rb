@@ -30,6 +30,11 @@ class SaasFlowTest < ActionDispatch::IntegrationTest
     respond_to_approval
     assert_response :success
     assert_equal before + 1, ReplenishmentOrder.count
+    get "/demo/conversations/#{@conversation.public_id}", headers: { "X-Demo-Session" => @token }
+    part = response.parsed_body.fetch("messages").last.fetch("parts").find { |p| p["toolCallId"] == "call-saved" }
+    assert_equal "output-available", part.fetch("state")
+    assert_equal true, part.dig("approval", "approved")
+    assert_equal ReplenishmentOrder.last.id, part.dig("output", "order", "id")
   end
 
   test "denial, tampered input, and another session cannot write" do
@@ -50,7 +55,7 @@ class SaasFlowTest < ActionDispatch::IntegrationTest
     assert_equal before, ReplenishmentOrder.count
   end
 
-  test "confirmed reset changes revision, clears cache and orders, preserves conversation audit, and rejects old approval" do
+  test "confirmed reset changes revision, clears orders, preserves conversation audit, and rejects old approval" do
     old = InventoryCatalog.new.revision
     get "/demo/dashboard"
     assert response.parsed_body.fetch("demo_data")
@@ -59,7 +64,6 @@ class SaasFlowTest < ActionDispatch::IntegrationTest
     post "/demo/reset", params: { confirmed: true }, as: :json
     assert_response :success
     assert_equal 4, response.parsed_body.fetch("inventory").size
-    assert_equal 0, AgentCacheEntry.count
     assert_not_equal old, response.parsed_body.fetch("revision")
     assert AgentConversation.exists?(@conversation.id)
     respond_to_approval
@@ -68,10 +72,8 @@ class SaasFlowTest < ActionDispatch::IntegrationTest
     assert_includes response.body, '"type":"tool-output-denied"'
   end
 
-  test "external inventory change changes cache key and invalidates pending approval" do
-    key = AgentCacheKey.digest(adapter: "openai", messages: [], system_prompt: "test")
+  test "external inventory change invalidates pending approval" do
     InventoryItem.find_by!(sku: "TEA-GRN").increment!(:stock_on_hand)
-    assert_not_equal key, AgentCacheKey.digest(adapter: "openai", messages: [], system_prompt: "test")
     respond_to_approval
     assert_equal "stale", @approval.reload.status
   end
