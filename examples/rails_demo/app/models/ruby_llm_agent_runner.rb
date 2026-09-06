@@ -21,7 +21,7 @@ class RubyLlmAgentRunner
         steps += 1
         raise "agent exceeded step limit" if steps > AgentChat::MAX_STEPS
       end
-      chat.after_message { |message| events << message if message.tool_result? }
+      chat.after_message { |message| events << message }
       chat.ask(@agent.prompt) { |chunk| events << chunk }
     end
     inserted_run = false

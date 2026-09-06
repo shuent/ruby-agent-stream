@@ -5,15 +5,16 @@
   AI SDK standard tool approval responses and outputs.
 - Preserved RubyLLM 1.16 compatibility while accepting the 2.0 development SDK's
   model, finish-reason, and JSON tool-result message contracts.
-- Added adapter lifecycle modes for composing multiple provider calls into one
-  UI message. The OpenAI adapter now exposes its completed response and mapped
-  finish reason after enumeration.
-- Fixed RubyLLM automatic tool loops to start a new UI step, accept reused
-  per-completion tool stream keys, and aggregate usage across provider calls.
+- Removed OpenAI/Anthropic adapters and lifecycle modes. OpenAI examples now
+  own their SDK requests, tool execution, context, and turn boundaries directly.
+- Made the optional RubyLLM adapter self-contained and added a primitive
+  Event array / Enumerator / stdout example.
+- Simplified RubyLLM conversion to streamed text/thinking chunks and completed
+  `after_message` messages. Removed partial tool-input reconstruction; finalized
+  tool calls, results, and usage now come directly from RubyLLM.
 - Replaced the RubyLLM-specific stream with validated, provider-neutral
   `AgentStream::UIMessage::V1::Event` and `Stream` types.
-- Added adapters for RubyLLM, official OpenAI Responses streams, and official
-  Anthropic Messages streams.
+- Added an optional RubyLLM adapter.
 - Added runtime event-schema and protocol-order validation, RBS signatures,
   real SDK model fixtures, and provider-neutral examples.
 

@@ -49,7 +49,10 @@ class RubyLLMResponsesContractTest < Minitest::Test
                                                 usage: { input_tokens: 8, output_tokens: 3 } } }
     ]
     chunks = raw.map { |data| @protocol.send(:build_chunk, JSON.parse(JSON.generate(data))) }
-    events = AgentStream::Adapters::RubyLLM.new(chunks).to_a
+    # The SDK assembles tool inputs; the adapter receives its completed Message.
+    accumulator = RubyLLM::StreamAccumulator.new
+    chunks.each { |chunk| accumulator.add(chunk) }
+    events = AgentStream::Adapters::RubyLLM.new([*chunks, accumulator.to_message(nil)]).to_a
     stream = AgentStream::UIMessage::V1::Stream.new
     events.each { |event| stream << event }
     assert stream.finished?

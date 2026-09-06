@@ -2,7 +2,10 @@
   {
     "kind": "chunk",
     "model_id": "gpt-5.4",
-    "thinking": {"text": "I should check the weather.", "signature": "signed-thinking"},
+    "thinking": {
+      "text": "I should check the weather.",
+      "signature": "signed-thinking"
+    },
     "content": null
   },
   {
@@ -15,7 +18,11 @@
     "model_id": "gpt-5.4",
     "content": null,
     "tool_calls": {
-      "0": {"id": "call_weather_001", "name": "weather", "arguments": "{\"city\":\""}
+      "0": {
+        "id": "call_weather_001",
+        "name": "weather",
+        "arguments": "{\"city\":\""
+      }
     }
   },
   {
@@ -23,16 +30,44 @@
     "model_id": "gpt-5.4",
     "content": null,
     "tool_calls": {
-      "0": {"id": null, "name": null, "arguments": "Tokyo\"}"}
+      "0": {
+        "id": null,
+        "name": null,
+        "arguments": "Tokyo\"}"
+      }
+    }
+  },
+  {
+    "kind": "message",
+    "model_id": "gpt-5.4",
+    "content": "Checking Tokyo. ",
+    "tool_calls": {
+      "call_weather_001": {
+        "id": "call_weather_001",
+        "name": "weather",
+        "arguments": {
+          "city": "Tokyo"
+        }
+      }
     }
   },
   {
     "kind": "tool_result",
     "tool_call_id": "call_weather_001",
-    "content": {"temperature": 24, "unit": "celsius"}
+    "content": {
+      "temperature": 24,
+      "unit": "celsius"
+    }
   },
   {
     "kind": "chunk",
+    "model_id": "gpt-5.4",
+    "content": "It is 24°C.",
+    "input_tokens": 11,
+    "output_tokens": 9
+  },
+  {
+    "kind": "message",
     "model_id": "gpt-5.4",
     "content": "It is 24°C.",
     "input_tokens": 11,

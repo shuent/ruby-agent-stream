@@ -1,4 +1,4 @@
-require "ai_stream/adapters/openai"
+require "ai_stream"
 require "ai_stream/adapters/ruby_llm"
 require "openai"
 require "ruby_llm"

@@ -41,3 +41,9 @@ npm run build
 キャッシュ削除は追加migrationで行い、会話・承認・業務データを保持します。`db:reset`は不要です。ルートはRubyLLM 1.16のアダプター互換性テスト、Rails exampleはResponses対応の固定コミットを使用しているため、それぞれのGemfileで検証してください。
 
 「新しい会話」を開いただけでは保存しません。最初の送信時に保存し、未送信の空の会話は履歴に表示しません。サイドバーは最新10件を表示し、「会話一覧を見る」で全件から選べます。既存の空の会話も一覧から除外しますが、保存済みデータは削除しません。
+
+## OpenAI agent の責務
+
+`OpenaiAgentRunner` は adapter を使わず、SDK の text / reasoning delta を直接 `Event` に変換します。function input は完了した response から確定して表示します。`store: true` を明示し、同じ run 内だけ `previous_response_id` を使います。新しいユーザー発言は保存済み会話を `initial_input` で渡し、instructions は呼び出しごとに送ります。`response.completed` 後も function call があれば全件の tool 結果を同じ step へ出して次の生成を呼び、なければターンを終了します。承認待ちでは終了し、承認 HTTP 継続は従来どおり LLM を呼びません。failed / incomplete / 完了通知のない切断 / 上限超過は1回の `error` で終了します。RubyLLM 経路だけは任意の RubyLLM adapter を利用します。
+
+RubyLLM 経路は `ask` の chunk と `after_message` の全 Message を adapter に渡します。本文・thinking は逐次表示し、tool input は確定 Message から表示します。tool の実行・待機・継続は RubyLLM が担当し、承認待ちの通知は Rails 側で追加します。

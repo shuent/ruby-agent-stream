@@ -8,25 +8,6 @@ module AgentStream
     class UnsupportedEventError < Error
     end
 
-    class OpenAI
-      include Enumerable[UIMessage::V1::Event]
-
-      attr_reader finish_reason: UIMessage::V1::finish_reason?
-      attr_reader response: untyped?
-
-      def initialize: (Enumerable[untyped] events, ?message_id: String?, ?lifecycle: :message | :step | :content) -> void
-      def each: () { (UIMessage::V1::Event) -> void } -> self
-              | () -> Enumerator[UIMessage::V1::Event, self]
-    end
-
-    class Anthropic
-      include Enumerable[UIMessage::V1::Event]
-
-      def initialize: (Enumerable[untyped] events, ?message_id: String?) -> void
-      def each: () { (UIMessage::V1::Event) -> void } -> self
-              | () -> Enumerator[UIMessage::V1::Event, self]
-    end
-
     class RubyLLM
       include Enumerable[UIMessage::V1::Event]
 
@@ -34,8 +15,7 @@ module AgentStream
         Enumerable[untyped] events,
         ?message_id: String?,
         ?finish_reason: UIMessage::V1::finish_reason,
-        ?id_generator: ^() -> String,
-        ?lifecycle: :message | :step | :content
+        ?id_generator: ^() -> String
       ) -> void
       def each: () { (UIMessage::V1::Event) -> void } -> self
               | () -> Enumerator[UIMessage::V1::Event, self]

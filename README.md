@@ -2,14 +2,12 @@
 
 English | [日本語](README.ja.md)
 
-`ruby-agent-stream` converts events from Ruby AI SDKs into [AI SDK UI Message Stream Protocol v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) SSE. It lets you keep an AI agent backend in Rails while using AI SDK's `useChat` on the client.
+`ruby-agent-stream` serializes events from Ruby applications as [AI SDK UI Message Stream Protocol v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) SSE. It lets you keep an AI agent backend in Rails while using AI SDK's `useChat` on the client.
 
-The provider-neutral core consists of `AgentStream::UIMessage::V1::Event` and `AgentStream::UIMessage::V1::Stream`. OpenAI, Anthropic, and RubyLLM support lives in separate adapters; the stream itself has no dependency on their SDK classes.
+The provider-neutral core consists of `AgentStream::UIMessage::V1::Event` and `AgentStream::UIMessage::V1::Stream`. The stream has no dependency on provider SDK classes. A RubyLLM adapter is an optional convenience: RubyLLM owns the agent loop, and the adapter converts its output.
 
 ```text
-OpenAI / Anthropic / RubyLLM events
-                 ↓
-        provider adapter
+Application events / optional RubyLLM adapter
                  ↓ Enumerable<Event>
          ui_stream << event
                  ↓
@@ -28,7 +26,7 @@ The only write interface is `ui_stream << event`.
 
 - `Event` validates the event type, required and optional fields, and JSON compatibility when it is created.
 - `Stream` validates message, step, part, and tool lifecycle ordering and serializes events as SSE frames.
-- `Adapters::*` interprets provider SDK events, accumulates streamed tool input JSON, and maps provider metadata.
+- `Adapters::RubyLLM` optionally converts RubyLLM chunks and completed messages.
 
 A new provider can be supported outside this gem by implementing an `Enumerable<AgentStream::UIMessage::V1::Event>`.
 
@@ -43,8 +41,7 @@ gem "ruby-agent-stream", git: "git@github.com:shuent/ruby-agent-stream.git"
 Add only the provider SDKs your application uses. They are not runtime dependencies of this gem.
 
 ```ruby
-gem "openai", "~> 0.85"       # OpenAI adapter
-gem "anthropic", "~> 1.68"   # Anthropic adapter
+gem "openai", "~> 0.85"       # Direct SDK agent example
 gem "ruby_llm", "~> 1.16"    # RubyLLM adapter
 ```
 
@@ -75,6 +72,12 @@ Pass a sink implementing `#write(String)`, such as `response.stream`, to write f
 
 Invalid fields and JSON values raise `Event::SchemaError` or `Event::JSONCompatibilityError`. Invalid ordering raises `Stream::ProtocolError`. RBS declares the same public event surface with overloads.
 
+For a runnable array → Enumerator → `ui_stream << event` → stdout example, see [examples/primivitve.rb](examples/primivitve.rb). No provider SDK or API key is needed.
+
+```bash
+bundle exec ruby -Ilib examples/primivitve.rb
+```
+
 ### Approval across HTTP requests
 
 After `tool-input-available` and `tool-approval-request`, close the step and finish
@@ -102,84 +105,44 @@ protocol validation only: the application owns approval persistence, identity
 and argument binding, authorization, stale decisions, and exactly-once tool
 execution. Never execute tools by replaying event history.
 
-## Provider adapters
+## Direct OpenAI SDK agent
 
-### OpenAI
+OpenAI and Anthropic adapters are not provided. The application owns SDK requests, context storage, tool execution, and continuation/stop decisions, and emits `Event` objects directly. Adapters are optional conveniences.
 
-```ruby
-require "openai"
-require "ai_stream/adapters/openai"
+[examples/openai.rb](examples/openai.rb) is a minimal Rails-free agent. It receives each full response with `responses.create`, executes a demo `weather` function, and sends its result in the next request.
 
-sdk_stream = OpenAI::Client.new.responses.stream(
-  model: ENV.fetch("OPENAI_MODEL"),
-  input: "Write one short greeting."
-)
-
-ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
-AgentStream::Adapters::OpenAI.new(sdk_stream).each { |event| ui_stream << event }
+```bash
+OPENAI_MODEL=your-model bundle exec ruby -Ilib examples/openai.rb "What is the weather in Tokyo?"
 ```
 
-The adapter consumes the official [`openai-ruby`](https://github.com/openai/openai-ruby) Responses stream and maps text, refusal, reasoning, function-call input, usage, completion, and failure events. Unknown future `response.*` events are ignored for forward compatibility; unrelated values raise `UnsupportedEventError`.
+Set `OPENAI_API_KEY` before running. This example chooses `store: true` and `previous_response_id`, and resends instructions on every request. A completed response ends one generation. If `response.output` contains `function_call` items, execute all of them and send matching `function_call_output` items; otherwise return the turn to the user. See the official [function calling guide](https://developers.openai.com/api/docs/guides/function-calling) and [Responses API](https://developers.openai.com/api/reference/cli/resources/responses/methods/create).
 
-For an app-owned, multi-step tool loop, use `lifecycle: :content`. The adapter then emits provider content and `message-metadata`, while the app owns the message and step boundaries. After enumeration, `response` exposes the completed SDK response and `finish_reason` is `:tool_calls`, `:stop`, or the mapped incomplete reason.
+One turn is one UI message; each generation and its tool results share a step. `OpenaiExample.events(..., summarize: false)` displays tool results and stops without another request. `max_steps:` defaults to six; exhausted limits, failures, and incomplete responses end with an `error`. The Rails example implements its own policy with streaming text/reasoning and approval continuation over HTTP.
 
-```ruby
-ui_stream << AgentStream::UIMessage::V1::Event.new(:start, message_id: message_id)
+## Optional RubyLLM adapter
 
-loop do
-  ui_stream << AgentStream::UIMessage::V1::Event.new(:start_step)
-  adapter = AgentStream::Adapters::OpenAI.new(sdk_stream, lifecycle: :content)
-  adapter.each { |event| ui_stream << event }
-
-  # Execute every available tool in the application, emit its output here,
-  # then create the next Responses stream with previous_response_id and
-  # function_call_output input items.
-  ui_stream << AgentStream::UIMessage::V1::Event.new(:finish_step)
-  break unless adapter.finish_reason == :tool_calls
-end
-
-ui_stream << AgentStream::UIMessage::V1::Event.new(:finish, finish_reason: adapter.finish_reason)
-```
-
-`lifecycle: :step` omits only the message-level `start` and `finish`; the default `:message` remains the complete one-response envelope. With `:content`, emit tool outputs before the app's `finish-step`. The Responses API does not carry prior instructions forward when `previous_response_id` is used, so send the instructions again on every provider call.
-
-### Anthropic
-
-```ruby
-require "anthropic"
-require "ai_stream/adapters/anthropic"
-
-sdk_stream = Anthropic::Client.new.messages.stream(
-  model: ENV.fetch("ANTHROPIC_MODEL"),
-  max_tokens: 512,
-  messages: [{ role: :user, content: "Write one short greeting." }]
-)
-
-ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
-AgentStream::Adapters::Anthropic.new(sdk_stream).each { |event| ui_stream << event }
-```
-
-The adapter consumes the official [`anthropic-sdk-ruby`](https://github.com/anthropics/anthropic-sdk-ruby) `MessageStream`. It maps raw text, thinking, signatures, tool use, usage, and stop reasons while avoiding duplicate helper events. Client tools become ordinary tool events; server and MCP tool use sets `providerExecuted: true`.
-
-### RubyLLM
 
 ```ruby
 require "ruby_llm"
 require "ai_stream/adapters/ruby_llm"
 
 sdk_events = Enumerator.new do |events|
-  RubyLLM.chat.ask("Write one short greeting.") { |chunk| events << chunk }
+  chat = RubyLLM.chat
+  chat.after_message { |message| events << message }
+  chat.ask("Write one short greeting.") { |chunk| events << chunk }
 end
 
 ui_stream = AgentStream::UIMessage::V1::Stream.new($stdout)
 AgentStream::Adapters::RubyLLM.new(sdk_events).each { |event| ui_stream << event }
 ```
 
-The RubyLLM adapter handles text, thinking, URL attachments, streamed or structured tool calls, and tool-result `RubyLLM::Message` objects. To include tool results from an agent loop, add messages for which `message.tool_result?` is true to the same enumerator from an `after_message` callback. The adapter starts a new UI step on the first chunk after one or more tool-result messages, permits RubyLLM to reuse its per-completion stream keys, and reports usage summed across the automatic tool loop.
+Feed both `ask` chunks and **all `after_message` messages** into the same enumerator, in callback order. Text and thinking stream from chunks; completed assistant messages supply tool inputs and usage, and tool-result messages supply outputs. Completed text is not emitted again. Partial tool-call chunks are ignored: tool inputs appear only once RubyLLM has assembled them.
+
+RubyLLM owns tool execution, waiting, and continuation. The adapter only adds UI boundaries: each generation and its tool results share a step, and the next generation starts a new step. Enumeration ending finishes the UI message. Usage is summed from completed assistant messages, without counting chunk snapshots again. RubyLLM 1.16 URL content attachments remain supported.
 
 ## Rails and `useChat`
 
-The controller owns HTTP transport, `Stream` owns SSE serialization, and an adapter owns provider conversion:
+The controller owns HTTP transport, `Stream` owns SSE serialization, and the application agent executes work and creates events. The RubyLLM adapter can help with conversion:
 
 ```ruby
 class ChatsController < ApplicationController
@@ -205,7 +168,7 @@ end
 
 Set headers before the first event and always close the response stream. AI SDK's `DefaultChatTransport` and `useChat` can consume the endpoint directly.
 
-## Custom adapters
+## Optional custom adapters
 
 A custom adapter only needs to consume provider events and yield validated events:
 
@@ -234,8 +197,8 @@ Adapter output still passes through `ui_stream << event`, so it cannot bypass ev
 
 ## Examples
 
-- `examples/openai.rb`: official OpenAI Responses stream
-- `examples/anthropic.rb`: official Anthropic Messages stream
+- `examples/primivitve.rb`: Event array → Enumerator → stdout SSE
+- `examples/openai.rb`: direct OpenAI SDK agent loop (Rails-free)
 - `examples/ruby_llm.rb`: RubyLLM callback exposed as an `Enumerator`
 - `examples/rails_demo`: plain model events converted to `Event` and written as Rails SSE
 - `examples/react_client`: the Rails demo consumed by `@ai-sdk/react` `useChat`
@@ -258,7 +221,7 @@ bundle exec rubocop
 gem build ruby-agent-stream.gemspec
 ```
 
-OpenAI and Anthropic fixtures are restored through their official SDK model converters. RubyLLM tests instantiate its real event classes. Every adapter's output is then passed through the real `UIMessage::V1::Stream`.
+Example agent tests use fake provider responses restored through the real OpenAI SDK model converter, without API calls. RubyLLM tests instantiate its real event classes. Outputs pass through the real `UIMessage::V1::Stream`.
 
 ## Scope
 
